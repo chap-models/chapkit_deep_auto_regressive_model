@@ -62,7 +62,7 @@ src/chapkit_deep_auto_regressive/
   service.py   the chapkit service: config schema, ShellModelRunner, service info
 main.py        re-exports the service at the root (uvicorn main:app, MLproject export)
 MLproject      generated from main.py by `chapkit mlproject export` -- do not edit by hand
-tools/         reference forecast comparisons (script and API level)
+tools/         reference forecast comparisons (script and API level) and the benchmark
 configs/       example model configurations (weekly example, monthly full_rich)
 scripts/       data preparation for the monthly full_rich configuration
 example_data/  example weekly (Nicaragua) and monthly (Laos) data
@@ -145,6 +145,19 @@ Identical output depends on the numerical stack, which `uv.lock` pins (jax/jaxli
 0.12.7, optax 0.2.8, numpy 2.4.6, pandas 3.0.3, scipy 1.17.1), and on the platform. The same
 model on Linux (the Docker image) and on macOS gives forecasts that differ by up to one case in
 some samples over a full-length training run, with the same mean; compare like with like.
+
+## Benchmark
+
+`tools/benchmark.py` (`make bench`) trains and predicts on the weekly and monthly example data
+and reports the median time and peak memory of each step. It saves the forecasts, so a run before
+and a run after a change can be checked for identical output:
+
+```bash
+uv run python tools/benchmark.py --out /tmp/before          # on the base branch
+uv run python tools/benchmark.py --out /tmp/after --compare /tmp/before
+```
+
+It uses 100 epochs by default (`--n-iter`); training time grows linearly with the epoch count.
 
 ## Configurations
 

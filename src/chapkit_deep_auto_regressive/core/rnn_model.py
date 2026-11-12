@@ -1,8 +1,8 @@
 """The recurrent network architecture.
 
 The model that the auto-regressive estimator trains is
-[`ARModel2`][chapkit_deep_auto_regressive.core.rnn_model.ARModel2], assembled by the
-[`model_makers`][chapkit_deep_auto_regressive.core.rnn_model.model_makers] factories. It processes a window
+[`ARModel2`][chapkit_deep_auto_regressive.core.rnn_model.ARModel2], assembled by
+[`build_network`][chapkit_deep_auto_regressive.core.rnn_model.build_network]. It processes a window
 in four steps: a per-location [`Preprocess`][chapkit_deep_auto_regressive.core.rnn_model.Preprocess] stage,
 an auto-regressive join ([`ARAdder`][chapkit_deep_auto_regressive.core.rnn_model.ARAdder]), and two stacked
 ``SimpleCell`` RNNs that encode the context and decode the forecast horizon.
@@ -10,13 +10,14 @@ an auto-regressive join ([`ARAdder`][chapkit_deep_auto_regressive.core.rnn_model
 Array convention: ``batch x location x time x feature``.
 """
 
-from collections.abc import Callable
 from typing import Any, cast
 
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
 from flax.linen import SimpleCell
+
+from .options import Architecture, CellType, ModelOptions
 
 # Dimensions: batch_dim x location_dim x time_dim x feature_dim
 
@@ -25,7 +26,7 @@ Cell = SimpleCell | nn.GRUCell
 
 #: Recurrent cell types selectable by name. ``"gru"`` (gated) handles the
 #: multi-step forecast horizon markedly better than the plain ``"simple"`` RNN.
-CELL_TYPES: dict[str, type[Cell]] = {"simple": SimpleCell, "gru": nn.GRUCell}
+CELL_TYPES: dict[CellType, type[Cell]] = {"simple": SimpleCell, "gru": nn.GRUCell}
 
 
 def _run_rnn(cell: Cell, inputs: jax.Array, initial_carry: Any = None) -> jax.Array:
@@ -144,32 +145,6 @@ class ARAdder(nn.Module):
         return jnp.concatenate([jnp.log1p(y)[..., None], x[..., 1 : n_y + 1, :]], axis=-1)
 
 
-class MultiValueARAdder(nn.Module):
-    """Auto-regressive join that also mixes targets across locations.
-
-    A variant of [`ARAdder`][chapkit_deep_auto_regressive.core.rnn_model.ARAdder] that, in addition to each
-    series' own past, passes the targets through a dense layer across locations so
-    a region can borrow signal from the others.
-    """
-
-    @nn.compact
-    def __call__(self, x: jax.Array, y: jax.Array) -> jax.Array:
-        """Concatenate the lagged target and a cross-location mix onto the features.
-
-        Args:
-            x: Processed features, shape ``(..., time, features)``.
-            y: Observed targets over the context, shape ``(locations, n_context)``.
-
-        Returns:
-            Features with both the per-location lag and a learned cross-location
-            target mix appended on the feature axis.
-        """
-        n_y = y.shape[-1]
-        collected_y = jnp.moveaxis(nn.Dense(features=y.shape[0])(jnp.moveaxis(y, 0, -1)), -1, 0)
-        collected_y = nn.relu(collected_y)
-        return jnp.concatenate([collected_y[..., None], y[..., None], x[..., 1 : n_y + 1, :]], axis=-1)
-
-
 class ARModel2(nn.Module):
     """The full encoder/decoder auto-regressive network.
 
@@ -193,7 +168,7 @@ class ARModel2(nn.Module):
     preprocess: nn.Module
     cell_pre: Cell
     cell_post: Cell
-    ar_adder: ARAdder | MultiValueARAdder = ARAdder()
+    ar_adder: ARAdder = ARAdder()
     output_dim: int = 2
     head_features: int = 6
     n_layers: int = 1
@@ -281,72 +256,31 @@ class ARModel2(nn.Module):
         return x
 
 
-def build_network(
-    n_locations: int,
-    *,
-    cell: str = "gru",
-    rnn_features: int = 16,
-    preprocess_hidden: int = 16,
-    preprocess_output: int = 8,
-    embedding_dim: int = 8,
-    head_features: int = 24,
-    rnn_layers: int = 1,
-    recursive_decode: bool = False,
-    dropout_rate: float = 0.2,
-    input_dropout_rate: float = 0.0,
-) -> ARModel2:
-    """Build an [`ARModel2`][chapkit_deep_auto_regressive.core.rnn_model.ARModel2] from explicit hyperparameters.
+def build_network(n_locations: int, architecture: Architecture | None = None) -> ARModel2:
+    """Build an [`ARModel2`][chapkit_deep_auto_regressive.core.rnn_model.ARModel2] from its hyperparameters.
 
     Args:
         n_locations: Number of locations (passed to the preprocess stage).
-        cell: Recurrent cell type, a key of
-            [`CELL_TYPES`][chapkit_deep_auto_regressive.core.rnn_model.CELL_TYPES] (``"gru"`` or ``"simple"``).
-        rnn_features: Hidden width of the encoder and decoder cells.
-        preprocess_hidden: Hidden width of the per-location preprocess stack.
-        preprocess_output: Output width of the preprocess stage.
-        embedding_dim: Size of the per-location embedding.
-        head_features: Hidden width of the output head.
-        rnn_layers: Number of stacked encoder/decoder RNN layers.
-        recursive_decode: Whether to decode the horizon one step at a time, feeding
-            each step's predicted mean back as the next step's auto-regressive input.
-        dropout_rate: Dropout probability in the preprocess stage.
-        input_dropout_rate: Feature-dropout probability on the raw covariates,
-            zeroing whole feature channels (shared across location and time).
+        architecture: The network hyperparameters; the defaults of
+            [`ModelOptions`][chapkit_deep_auto_regressive.core.options.ModelOptions] when omitted.
 
     Returns:
         The configured network.
     """
-    cell_cls = CELL_TYPES[cell]
+    a = architecture if architecture is not None else ModelOptions().architecture
+    cell_cls = CELL_TYPES[a.cell]
     return ARModel2(
         Preprocess(
             n_locations=n_locations,
-            n_hidden=preprocess_hidden,
-            embedding_dim=embedding_dim,
-            output_dim=preprocess_output,
-            dropout_rate=dropout_rate,
-            input_dropout_rate=input_dropout_rate,
+            n_hidden=a.preprocess_hidden,
+            embedding_dim=a.embedding_dim,
+            output_dim=a.preprocess_output,
+            dropout_rate=a.dropout_rate,
+            input_dropout_rate=a.input_dropout_rate,
         ),
-        cell_cls(features=rnn_features),
-        cell_cls(features=rnn_features),
-        head_features=head_features,
-        n_layers=rnn_layers,
-        recursive_decode=recursive_decode,
+        cell_cls(features=a.rnn_features),
+        cell_cls(features=a.rnn_features),
+        head_features=a.head_features,
+        n_layers=a.rnn_layers,
+        recursive_decode=a.recursive_decode,
     )
-
-
-def _multi_value_network(n_locations: int) -> ARModel2:
-    """A small network with the cross-location auto-regressive join."""
-    return ARModel2(
-        Preprocess(n_locations=n_locations, output_dim=2, dropout_rate=0.2),
-        nn.SimpleCell(features=4),
-        nn.SimpleCell(features=4),
-        ar_adder=MultiValueARAdder(),
-    )
-
-
-#: Named network factories. ``"base"`` builds the default network (GRU-based);
-#: ``"multi_value"`` swaps in the cross-location auto-regressive join.
-model_makers: dict[str, Callable[[int], ARModel2]] = {
-    "base": build_network,
-    "multi_value": _multi_value_network,
-}

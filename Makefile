@@ -1,4 +1,4 @@
-.PHONY: help install lint mlproject test build-package compare compare-full build run run-ghcr serve-test test-contract test-api test-mlproject stop-test clean
+.PHONY: help install lint mlproject test build-package compare compare-full bench build run run-ghcr serve-test test-contract test-api test-mlproject stop-test clean
 
 IMAGE      ?= chapkit-deep-auto-regressive:latest
 GHCR_IMAGE ?= ghcr.io/chap-models/chapkit_deep_auto_regressive_model:latest
@@ -25,6 +25,7 @@ help:
 	@echo "  build-package   Build the sdist and wheel (uv build)"
 	@echo "  compare         Compare forecasts with the reference models (fast epochs; needs REF_WEEKLY/REF_MONTHLY)"
 	@echo "  compare-full    Same, at the shipped epoch counts (slow)"
+	@echo "  bench           Time training and prediction on the example data (writes .bench/)"
 	@echo "  build           Build docker image ($(IMAGE))"
 	@echo "  run             Build and run the service on :8000"
 	@echo "  run-ghcr        Pull and run the prebuilt GHCR image on :8000"
@@ -60,6 +61,9 @@ build-package:
 compare:
 	@uv run python tools/compare_reference.py --period week --reference $(REF_WEEKLY)
 	@uv run python tools/compare_reference.py --period month --reference $(REF_MONTHLY)
+
+bench:
+	@uv run python tools/benchmark.py --out .bench
 
 compare-full:
 	@uv run python tools/compare_reference.py --period week --reference $(REF_WEEKLY) --full

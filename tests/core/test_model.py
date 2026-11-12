@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 from chapkit_deep_auto_regressive.core.data_loader import DataSet, SimpleDataLoader
-from chapkit_deep_auto_regressive.core.rnn_model import build_network, model_makers
+from chapkit_deep_auto_regressive.core.options import ModelOptions
+from chapkit_deep_auto_regressive.core.rnn_model import build_network
 from chapkit_deep_auto_regressive.core.trainer import Trainer
 
 
@@ -27,7 +28,7 @@ def _toy_loader(n_loc: int = 2, n_periods: int = 12, n_feat: int = 4, seed: int 
 def test_network_forward_produces_two_finite_channels() -> None:
     loader = _toy_loader()
     x, ar_y, _ = next(iter(loader))
-    model = model_makers["base"](x.shape[0])
+    model = build_network(x.shape[0])
     params = model.init(jax.random.PRNGKey(0), x, ar_y, training=False)
     eta = np.asarray(model.apply(params, x, ar_y))
     assert eta.shape[-1] == 2
@@ -46,7 +47,8 @@ def test_rnn_layers_adds_parameters(recursive_decode: bool) -> None:
     key = jax.random.PRNGKey(0)
 
     def count(n_layers: int) -> int:
-        net = build_network(x.shape[0], rnn_layers=n_layers, recursive_decode=recursive_decode)
+        architecture = ModelOptions(rnn_layers=n_layers, recursive_decode=recursive_decode).architecture
+        net = build_network(x.shape[0], architecture)
         return _param_count(net.init(key, x, ar_y, training=False))
 
     one, two, three = count(1), count(2), count(3)
@@ -56,6 +58,6 @@ def test_rnn_layers_adds_parameters(recursive_decode: bool) -> None:
 def test_trainer_runs_a_couple_of_steps() -> None:
     loader = _toy_loader()
     x, _, _ = next(iter(loader))
-    model = model_makers["base"](x.shape[0])
+    model = build_network(x.shape[0])
     state = Trainer(model, n_iter=2, learning_rate=1e-3).train(loader, lambda eta, y: jnp.mean(eta**2))
     assert state.params is not None

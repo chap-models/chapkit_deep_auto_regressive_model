@@ -1,9 +1,9 @@
 """Build the deep auto-regressive model for weekly or monthly data.
 
 One model serves both period types, with one set of defaults (36-period
-context, 3-period horizon, Adam at 1e-3 for 400 epochs, the library defaults).
-Weekly data has recommended values of its own for those four knobs,
-``WEEKLY_OPTIONS`` (as ``configs/weekly_example.yaml`` sets).
+context, 3-period horizon, Adam at 1e-3 for 400 epochs; see
+``core.options.TrainingOptions``). Weekly data has recommended values of its
+own for those four knobs, ``WEEKLY_OPTIONS`` (as ``configs/weekly_example.yaml`` sets).
 """
 
 import logging
@@ -13,15 +13,13 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
 from chapkit_deep_auto_regressive.core import DeepAutoRegressiveModel
+from chapkit_deep_auto_regressive.core.options import ModelOptions, TrainingOptions
 
 logger = logging.getLogger(__name__)
 
 PeriodType = Literal["week", "month"]
 
-#: The defaults of the knobs that have recommended weekly values (the library's defaults).
-DEFAULTS: dict[str, Any] = {"context_length": 36, "prediction_length": 3, "learning_rate": 1e-3, "n_iter": 400}
-
-#: Recommended values of those knobs for weekly data.
+#: Recommended values for weekly data of the knobs whose defaults suit monthly data.
 WEEKLY_OPTIONS: dict[str, Any] = {
     "context_length": 52,
     "prediction_length": 12,
@@ -29,32 +27,8 @@ WEEKLY_OPTIONS: dict[str, Any] = {
     "n_iter": 1000,
 }
 
-#: Model options a run may set via ``user_option_values``. The service config in
-#: service.py declares exactly these (tests/test_periods.py checks it).
-MODEL_OPTIONS = (
-    "n_iter",
-    "seed_offset",
-    "early_stopping",
-    "validation_periods",
-    "patience",
-    "eval_every",
-    "min_probe_windows",
-    "refit_scaling",
-    "context_length",
-    "n_ensemble",
-    "learning_rate",
-    "lr_schedule",
-    "peak_learning_rate",
-    "warmup_epochs",
-    "prediction_length",
-    "cell",
-    "rnn_features",
-    "head_features",
-    "rnn_layers",
-    "dropout_rate",
-    "recursive_decode",
-    "input_dropout_rate",
-)
+#: Model options a run may set via ``user_option_values``; the service config declares exactly these.
+MODEL_OPTIONS: tuple[str, ...] = tuple(TrainingOptions.model_fields)
 
 # chap-core sends monthly periods as "YYYY-MM", and weekly ones either as an ISO
 # week ("2020W05", "2020-W05") or as a "start/end" date range.
@@ -86,25 +60,37 @@ def detect_period_type(time_periods: Iterable[Any]) -> PeriodType:
 def resolve_options(
     options: Mapping[str, Any] | None = None,
     prediction_periods: int | None = None,
-) -> dict[str, Any]:
+) -> ModelOptions:
     """Return the run's model options with the defaults filled in.
 
     Args:
         options: A run's ``user_option_values``. A knob that is missing or
-            ``None`` takes its default.
+            ``None`` takes its default; an unknown one is ignored with a warning.
         prediction_periods: The horizon the run asks for. The trained horizon
             caps how far predict can reach, so ``prediction_length`` is raised to
             this when it is shorter.
+
+    Raises:
+        pydantic.ValidationError: If a value is invalid, such as an unknown cell type.
     """
-    resolved = {**DEFAULTS, **{key: value for key, value in (options or {}).items() if value is not None}}
-    if prediction_periods and prediction_periods > resolved["prediction_length"]:
+    values: dict[str, Any] = {}
+    for key, value in (options or {}).items():
+        if key not in MODEL_OPTIONS:
+            logger.warning("Ignoring unknown model option: %s", key)
+        elif value is not None:
+            values[key] = value
+    if "AR_N_ITER" in os.environ:
+        # Lets the tests run a fast pass, whatever the config says.
+        values["n_iter"] = int(os.environ["AR_N_ITER"])
+    resolved = ModelOptions.model_validate(values)
+    if prediction_periods and prediction_periods > resolved.prediction_length:
         logger.info(
             "prediction_length=%d is shorter than the %d periods asked for; raising it to %d",
-            resolved["prediction_length"],
+            resolved.prediction_length,
             prediction_periods,
             prediction_periods,
         )
-        resolved["prediction_length"] = prediction_periods
+        resolved.prediction_length = prediction_periods
     return resolved
 
 
@@ -112,22 +98,5 @@ def build_model(
     options: Mapping[str, Any] | None = None,
     prediction_periods: int | None = None,
 ) -> DeepAutoRegressiveModel:
-    """Return the model with the defaults and any run ``user_option_values`` applied.
-
-    Unknown option keys are ignored with a warning. ``AR_N_ITER`` overrides the
-    epoch count regardless of config, so the tests can run a fast pass.
-    """
-    resolved = resolve_options(options, prediction_periods)
-    if "AR_N_ITER" in os.environ:
-        resolved["n_iter"] = int(os.environ["AR_N_ITER"])
-    model = DeepAutoRegressiveModel()
-    # Early stopping is opt-in. It holds out a trailing validation block and needs
-    # a long series (the library raises when the history is too short), so a run
-    # must ask for it explicitly rather than inherit it from the library default.
-    model.early_stopping = False
-    for key, value in resolved.items():
-        if key in MODEL_OPTIONS:
-            setattr(model, key, value)
-        else:
-            logger.warning("Ignoring unknown model option: %s", key)
-    return model
+    """Return the model with the defaults and any run ``user_option_values`` applied."""
+    return DeepAutoRegressiveModel(resolve_options(options, prediction_periods))
