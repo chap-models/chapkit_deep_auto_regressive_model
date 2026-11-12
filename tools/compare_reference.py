@@ -11,12 +11,14 @@ Usage:
 By default every case runs with ``AR_N_ITER=30`` to keep it fast (the code path
 is the same at any epoch count); ``--full`` drops the override so the defaults
 (1000 epochs weekly, 400 monthly) are compared as shipped. Exits 1 on any mismatch,
-except that the cases in ``MEAN_SHIFT_TOLERANCE`` may differ within a bound on
-how far the forecast means move.
+except that the cases in ``SHIFT_TOLERANCE`` may differ, in short runs on the
+platforms where they are known to, within a bound on how far each forecast's
+mean and its 10th and 90th percentiles move.
 """
 
 import argparse
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -26,6 +28,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from numpy.typing import NDArray
 
 from chapkit_deep_auto_regressive.model import WEEKLY_OPTIONS
 
@@ -65,19 +68,35 @@ CASES: dict[str, list[tuple[str, list[str], dict[str, Any], str]]] = {
         ("simple-cell-recursive", [], {"n_ensemble": 1, "cell": "simple", "recursive_decode": True}, "all"),
     ],
 }
-#: Cases allowed to differ from the reference, within a tolerance on the forecast
-#: means. jax 0.12 computes the warmup_cosine learning-rate schedule with
-#: slightly different rounding from the jax 0.10 the references pin, and on some
-#: processors (Linux x86_64, macOS) training amplifies that into a small shift.
-#: The bounds sit below the shift a different random seed gives in the same case
-#: (median 18%, max 75%); every other case must still match exactly. Two limits:
-#: the shift depends on the processor (an emulated x86_64 run reached a median of
-#: 13%), so the check can fail on some CI runners, and a bound this close to the
-#: seed-to-seed shift would not catch a small real regression in these cases.
-MEAN_SHIFT_TOLERANCE: dict[tuple[str, str], tuple[float, float]] = {
+#: Cases allowed to differ from the reference, as ``(median, max)`` bounds on how
+#: far the forecasts move. jax 0.12 computes the warmup_cosine learning-rate
+#: schedule with slightly different rounding from the jax 0.10 the references
+#: pin, and on Linux x86_64 and macOS training amplifies that into a small
+#: shift. The bounds sit below the shift a different random seed gives in the
+#: same case (median 18%, max 75%). Every other case must match exactly.
+#:
+#: The exception is narrow: it applies only to short runs (it was measured at 30
+#: epochs, not at full length) and not on Linux arm64, where these cases still
+#: match exactly. Its limits: the shift depends on the processor (an emulated
+#: x86_64 run reached a median of 13%), so the check can fail on some CI
+#: runners, and a bound this close to the seed-to-seed shift would not catch a
+#: small real regression in these two cases.
+SHIFT_TOLERANCE: dict[tuple[str, str], tuple[float, float]] = {
     ("week", "warmup-cosine"): (0.15, 0.30),
     ("week", "warmup-cosine-early-stopping"): (0.15, 0.30),
 }
+
+
+def _tolerance_applies(full: bool) -> bool:
+    """Whether ``SHIFT_TOLERANCE`` applies here: short runs, not on Linux arm64."""
+    linux_arm64 = platform.system() == "Linux" and platform.machine() in {"aarch64", "arm64"}
+    return not full and not linux_arm64
+
+
+def _shift(old: NDArray[np.floating[Any]], new: NDArray[np.floating[Any]]) -> NDArray[np.floating[Any]]:
+    """Per-row shift of ``new`` from ``old``: relative to ``old``, or in cases when ``|old|`` is below 1."""
+    return np.abs(new - old) / np.maximum(np.abs(old), 1.0)
+
 
 DATA = {
     "week": REPO / "example_data/weekly/training_data.csv",
@@ -128,7 +147,12 @@ def _run(repo: Path, workdir: Path, env: dict[str, str], tag: str) -> pd.DataFra
 
 
 def compare(period: str, reference: Path, full: bool, only: list[str] | None) -> bool:
-    """Run every case for one period type; return whether all matched exactly."""
+    """Run every case for one period type; return whether every case passed.
+
+    A case passes when its forecasts are identical, or when it is in
+    ``SHIFT_TOLERANCE``, the tolerance applies here, and the forecasts move
+    within its bounds.
+    """
     env = {k: v for k, v in os.environ.items() if k not in {"VIRTUAL_ENV", "AR_N_ITER"}}
     if not full:
         env["AR_N_ITER"] = "30"
@@ -168,14 +192,23 @@ def compare(period: str, reference: Path, full: bool, only: list[str] | None) ->
         detail = ""
         if same_keys and not identical:
             # One sampled draw can move far on a tiny change in the fitted
-            # distribution, so also report how far each row's forecast mean moved.
-            old_mean = old[samples].to_numpy().mean(axis=1)
-            new_mean = new[samples].to_numpy().mean(axis=1)
-            shift = np.abs(new_mean - old_mean) / np.maximum(np.abs(old_mean), 1.0)
-            median_shift, max_shift = float(np.median(shift)), float(shift.max())
-            detail = f" mean shift: median {median_shift:.1%}, max {max_shift:.1%}"
-            tolerance = MEAN_SHIFT_TOLERANCE.get((period, name))
-            if tolerance is not None:
+            # distribution, so compare each forecast's mean and its 10th and 90th
+            # percentiles (the spread) rather than single draws.
+            old_samples, new_samples = old[samples].to_numpy(dtype=float), new[samples].to_numpy(dtype=float)
+            shifts = {
+                "mean": _shift(old_samples.mean(axis=1), new_samples.mean(axis=1)),
+                "p10": _shift(np.percentile(old_samples, 10, axis=1), np.percentile(new_samples, 10, axis=1)),
+                "p90": _shift(np.percentile(old_samples, 90, axis=1), np.percentile(new_samples, 90, axis=1)),
+            }
+            median_shift = max(float(np.median(v)) for v in shifts.values())
+            max_shift = max(float(v.max()) for v in shifts.values())
+            detail = (
+                " shift ("
+                + ", ".join(f"{k} median {np.median(v):.1%} max {v.max():.1%}" for k, v in shifts.items())
+                + ")"
+            )
+            tolerance = SHIFT_TOLERANCE.get((period, name))
+            if tolerance is not None and _tolerance_applies(full):
                 passed = median_shift <= tolerance[0] and max_shift <= tolerance[1]
                 status = "WITHIN TOLERANCE" if passed else "OUTSIDE TOLERANCE"
                 detail += f" (allowed: median {tolerance[0]:.0%}, max {tolerance[1]:.0%})"

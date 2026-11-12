@@ -131,19 +131,27 @@ With the same options and data, the forecasts are identical to those of the two 
 replaces, [auto_regressive_weekly_v2](https://github.com/chap-models/auto_regressive_weekly_v2)
 (with the weekly values above) and
 [auto_regressive_monthly_v2](https://github.com/chap-models/auto_regressive_monthly_v2) (with the
-defaults), with one exception: with `lr_schedule: warmup_cosine` the weekly forecasts differ on
-some processors, because jax 0.12 computes that schedule with different rounding from the jax 0.10
-the reference models pin. On Linux arm64 they are identical; on macOS arm64 samples differ by up
-to one case; on Linux x86_64 the forecast means move by a median of 3.4% (at most 12%) in the
-30-epoch CI comparison. That is well below the shift a different random seed gives in the same
-case (median 18%, at most 75%), so `tools/compare_reference.py` allows these two cases to differ
-as long as the median shift stays within 15% and the largest within 30%; every other case must
-match exactly. The tolerance has two limits. The shift depends on the processor of the
-machine running the check, and one emulated x86_64 run reached a median of 13%, close to the 15%
-bound, so the check can fail on some CI runners. And because the bound is near the seed-to-seed
-shift, it would not catch a small real regression in these two cases. `tools/compare_reference.py` runs a reference repo's own scripts in its locked
-environment and this model's modules on the same data, and requires identical prediction CSVs;
-`tools/api_compare.py` does the same through the service API. CI runs `make compare`.
+defaults), with one exception, described below. `tools/compare_reference.py` runs a reference
+repo's own scripts in its locked environment and this model's modules on the same data, and
+compares the prediction CSVs; `tools/api_compare.py` does the same through the service API. CI
+runs `make compare`.
+
+The exception: with `lr_schedule: warmup_cosine` the weekly forecasts differ on some processors,
+because jax 0.12 computes that schedule with different rounding from the jax 0.10 the reference
+models pin. On Linux arm64 they are identical; on macOS arm64 samples differ by up to one case;
+on Linux x86_64 the forecast means move by a median of 3.4% (at most 12%) in the 30-epoch CI
+comparison. A different random seed moves them far more (median 18%, at most 75%).
+
+So in short runs, except on Linux arm64, `tools/compare_reference.py` lets the two weekly
+warmup-cosine cases differ as long as each forecast's mean and its 10th and 90th percentiles move
+by a median of at most 15% and at most 30% in any one forecast. The shift is relative to the
+reference value, or in cases when that is below 1. Every other case, every case on Linux arm64,
+and every `--full` run must match exactly.
+
+The tolerance has two limits. The shift depends on the processor running the check, and one
+emulated x86_64 run reached a median of 13%, close to the bound, so the check can fail on some CI
+runners. And because the bound is near the seed-to-seed shift, it would not catch a small real
+regression in these two cases.
 
 ```bash
 make compare       # fast epochs (REF_WEEKLY / REF_MONTHLY point at the reference checkouts)
