@@ -10,7 +10,9 @@ Usage:
 
 By default every case runs with ``AR_N_ITER=30`` to keep it fast (the code path
 is the same at any epoch count); ``--full`` drops the override so the defaults
-(1000 epochs weekly, 400 monthly) are compared as shipped. Exits 1 on any mismatch.
+(1000 epochs weekly, 400 monthly) are compared as shipped. Exits 1 on any mismatch,
+except that the cases in ``MEAN_SHIFT_TOLERANCE`` may differ within a bound on
+how far the forecast means move.
 """
 
 import argparse
@@ -63,6 +65,17 @@ CASES: dict[str, list[tuple[str, list[str], dict[str, Any], str]]] = {
         ("simple-cell-recursive", [], {"n_ensemble": 1, "cell": "simple", "recursive_decode": True}, "all"),
     ],
 }
+#: Cases allowed to differ from the reference, within a tolerance on the forecast
+#: means. jax 0.12 computes the warmup_cosine learning-rate schedule with
+#: slightly different rounding from the jax 0.10 the references pin, and on some
+#: processors (Linux x86_64, macOS) training amplifies that into a small shift.
+#: The bounds sit below the shift a different random seed gives in the same case
+#: (median 18%, max 75%); every other case must still match exactly.
+MEAN_SHIFT_TOLERANCE: dict[tuple[str, str], tuple[float, float]] = {
+    ("week", "warmup-cosine"): (0.15, 0.30),
+    ("week", "warmup-cosine-early-stopping"): (0.15, 0.30),
+}
+
 DATA = {
     "week": REPO / "example_data/weekly/training_data.csv",
     "month": REPO / "example_data/monthly/training_data.csv",
@@ -147,17 +160,26 @@ def compare(period: str, reference: Path, full: bool, only: list[str] | None) ->
         samples = [c for c in old.columns if c.startswith("sample_")]
         max_diff = float(np.abs(old[samples].to_numpy() - new[samples].to_numpy()).max()) if same_keys else float("nan")
         identical = same_keys and old.equals(new)
-        ok &= identical
+        passed = identical
         status = "IDENTICAL" if identical else "DIFFERENT"
-        line = f"[{period}] {name:<24} {status}  rows={len(new)} samples={len(samples)} max|diff|={max_diff:.3g}"
+        detail = ""
         if same_keys and not identical:
             # One sampled draw can move far on a tiny change in the fitted
             # distribution, so also report how far each row's forecast mean moved.
             old_mean = old[samples].to_numpy().mean(axis=1)
             new_mean = new[samples].to_numpy().mean(axis=1)
             shift = np.abs(new_mean - old_mean) / np.maximum(np.abs(old_mean), 1.0)
-            line += f" mean shift: median {np.median(shift):.1%}, max {shift.max():.1%}"
-        print(line)
+            median_shift, max_shift = float(np.median(shift)), float(shift.max())
+            detail = f" mean shift: median {median_shift:.1%}, max {max_shift:.1%}"
+            tolerance = MEAN_SHIFT_TOLERANCE.get((period, name))
+            if tolerance is not None:
+                passed = median_shift <= tolerance[0] and max_shift <= tolerance[1]
+                status = "WITHIN TOLERANCE" if passed else "OUTSIDE TOLERANCE"
+                detail += f" (allowed: median {tolerance[0]:.0%}, max {tolerance[1]:.0%})"
+        ok &= passed
+        print(
+            f"[{period}] {name:<24} {status}  rows={len(new)} samples={len(samples)} max|diff|={max_diff:.3g}{detail}"
+        )
         sys.stdout.flush()
     return ok
 

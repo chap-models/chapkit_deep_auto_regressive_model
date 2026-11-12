@@ -135,7 +135,10 @@ defaults), with one exception: with `lr_schedule: warmup_cosine` the weekly fore
 some processors, because jax 0.12 computes that schedule with different rounding from the jax 0.10
 the reference models pin. On Linux arm64 they are identical; on macOS arm64 samples differ by up
 to one case; on Linux x86_64 the forecast means move by a median of 3.4% (at most 12%) in the
-30-epoch CI comparison. `tools/compare_reference.py` runs a reference repo's own scripts in its locked
+30-epoch CI comparison. That is well below the shift a different random seed gives in the same
+case (median 18%, at most 75%), so `tools/compare_reference.py` allows these two cases to differ
+as long as the median shift stays within 15% and the largest within 30%; every other case must
+match exactly. `tools/compare_reference.py` runs a reference repo's own scripts in its locked
 environment and this model's modules on the same data, and requires identical prediction CSVs;
 `tools/api_compare.py` does the same through the service API. CI runs `make compare`.
 
