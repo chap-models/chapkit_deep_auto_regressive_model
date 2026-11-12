@@ -28,7 +28,7 @@ from chapkit import BaseConfig
 from chapkit.api import AssessedStatus, MLServiceBuilder, MLServiceInfo, ModelMetadata, PeriodType
 from chapkit.artifact import ArtifactHierarchy
 from chapkit.ml import ShellModelRunner
-from pydantic import Field
+from pydantic import Field, HttpUrl
 
 
 class AutoRegressiveConfig(BaseConfig):
@@ -126,7 +126,7 @@ info = MLServiceInfo(
         author_assessed_status=AssessedStatus.red,
         contact_email="knut.rand@dhis2.org",
         organization="HISP Centre, University of Oslo",
-        organization_logo_url="https://landportal.org/sites/default/files/2024-03/university_of_oslo_logo.png",
+        organization_logo_url=HttpUrl("https://landportal.org/sites/default/files/2024-03/university_of_oslo_logo.png"),
         citation_info=(
             'Rand, Knut. 2025. "Deep Auto Regressive model". HISP Centre, University of Oslo. '
             "https://dhis2-chap.github.io/chap-core/external_models/overview_of_supported_models.html"

@@ -19,7 +19,7 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  install         Install dependencies (uv sync)"
-	@echo "  lint            Ruff format check + lint, and check MLproject is up to date"
+	@echo "  lint            Ruff format check + lint, mypy, pyright, and check MLproject is up to date"
 	@echo "  mlproject       Regenerate MLproject from main.py"
 	@echo "  test            Unit, library and train/predict pipeline tests"
 	@echo "  build-package   Build the sdist and wheel (uv build)"
@@ -41,6 +41,10 @@ lint:
 	@uv run ruff format --check .
 	@echo ">>> Ruff lint"
 	@uv run ruff check .
+	@echo ">>> mypy"
+	@uv run mypy
+	@echo ">>> pyright"
+	@uv run pyright
 	@echo ">>> MLproject check"
 	@uv run chapkit mlproject export --check 2>/dev/null
 
@@ -103,7 +107,7 @@ stop-test:
 
 clean:
 	@docker rmi -f $(IMAGE) 2>/dev/null || true
-	@rm -rf dist data test_out .pytest_cache .ruff_cache
+	@rm -rf dist data test_out .pytest_cache .ruff_cache .mypy_cache
 	@find . -type d -name "__pycache__" -not -path "./.venv/*" -exec rm -rf {} + 2>/dev/null || true
 
 .DEFAULT_GOAL := help

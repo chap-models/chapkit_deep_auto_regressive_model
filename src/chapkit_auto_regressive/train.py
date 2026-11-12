@@ -10,9 +10,11 @@ layout for the MLproject entry point.
 import argparse
 import logging
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import yaml
+from pydantic import BaseModel
 
 from chapkit_auto_regressive.core import AutoRegressiveModel
 from chapkit_auto_regressive.model import build_model, detect_period_type
@@ -21,12 +23,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def _read_config(config_path: str | None) -> dict:
-    """Read a Chap model-configuration YAML, if given."""
+class RunConfig(BaseModel):
+    """The parts of a Chap model-configuration YAML that training reads; other keys are ignored."""
+
+    additional_continuous_covariates: list[str] | None = None
+    prediction_periods: int | None = None
+    user_option_values: dict[str, Any] | None = None
+
+
+def _read_config(config_path: str | None) -> RunConfig:
+    """Read and validate a Chap model-configuration YAML, if given."""
     if not config_path or not Path(config_path).exists():
-        return {}
+        return RunConfig()
     with open(config_path) as f:
-        return yaml.safe_load(f) or {}
+        return RunConfig.model_validate(yaml.safe_load(f) or {})
 
 
 def _clamp_context_length(model: AutoRegressiveModel, data: pd.DataFrame) -> None:
@@ -66,8 +76,7 @@ def main() -> None:
     data = pd.read_csv(args.train_data)
     config = _read_config(args.config)
     period_type = detect_period_type(data["time_period"])
-    options = config.get("user_option_values") or {}
-    model = build_model(period_type, options, prediction_periods=config.get("prediction_periods"))
+    model = build_model(period_type, config.user_option_values or {}, prediction_periods=config.prediction_periods)
     logger.info(
         "Period type %s: context_length=%d, prediction_length=%d, learning_rate=%g, n_iter=%d",
         period_type,
@@ -82,7 +91,7 @@ def main() -> None:
     # training CSV, so the columns present do not decide what is used. The chosen
     # covariates are persisted in the saved predictor, so predict.py needs no
     # matching configuration.
-    model.additional_covariates = list(config.get("additional_continuous_covariates") or [])
+    model.additional_covariates = list(config.additional_continuous_covariates or [])
     if model.additional_covariates:
         logger.info("Using additional covariates: %s", model.additional_covariates)
     predictor = model.train(data)

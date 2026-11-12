@@ -25,8 +25,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compare_v2 import DATA, HORIZON, _run  # noqa: E402
+# Run as a script (python tools/api_compare.py), so its own folder is on sys.path.
+from compare_v2 import DATA, HORIZON, _run
 
 # (name, user options) per period type; options go to the service config and the reference config alike.
 CASES: dict[str, list[tuple[str, dict[str, Any]]]] = {
@@ -51,7 +51,9 @@ def _wait(client: httpx2.Client, job_id: str, label: str) -> None:
         time.sleep(2)
 
 
-def _service_forecast(client: httpx2.Client, name: str, options: dict[str, Any], train, future) -> pd.DataFrame:
+def _service_forecast(
+    client: httpx2.Client, name: str, options: dict[str, Any], train: pd.DataFrame, future: pd.DataFrame
+) -> pd.DataFrame:
     """Train and predict through the API; return the forecast frame."""
     config = client.post("/api/v1/configs", json={"name": f"api-compare-{name}", "data": options})
     config_id = config.raise_for_status().json()["id"]
@@ -68,7 +70,7 @@ def _service_forecast(client: httpx2.Client, name: str, options: dict[str, Any],
 
 def main() -> None:
     """Run every case for one period type against the service and the reference."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--url", required=True)
     parser.add_argument("--period", choices=["week", "month"], required=True)
     parser.add_argument("--reference", type=Path, required=True)
@@ -95,7 +97,7 @@ def main() -> None:
                 train.to_csv(workdir / "train.csv", index=False)
                 train.to_csv(workdir / "historic.csv", index=False)
                 future.to_csv(workdir / "future.csv", index=False)
-                config = {"additional_continuous_covariates": [], "user_option_values": options}
+                config: dict[str, Any] = {"additional_continuous_covariates": [], "user_option_values": options}
                 (workdir / "config.yml").write_text(yaml.safe_dump(config))
                 reference = _run(args.reference.resolve(), workdir, env, "reference")
             samples = [c for c in reference.columns if c.startswith("sample_")]

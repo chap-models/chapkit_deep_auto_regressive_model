@@ -109,11 +109,17 @@ the Docker image installs it (non-editable) into the chapkit-py base image's ven
 
 ```bash
 make install       # uv sync
+make lint          # ruff (incl. docstring and security rules), mypy, pyright (strict), MLproject check
 make test          # unit, library and train/predict tests (fast epochs)
 make run           # build the image and serve on :8000
 ```
 
 Without Docker: `uv run uvicorn main:app --port 8000`.
+
+Linting and type checking follow chapkit's setup (ruff `E,W,F,I,D,S`, mypy, pyright in strict
+mode), except for the vendored `core/` library and its tests in `tests/library/`. Those get
+ruff's style and import rules only, so the copy stays close to upstream; their typing is a
+matter for `chap_auto_regressive`.
 
 The service uses `ShellModelRunner` with `config_format="chap_core"`. Each train or predict job
 runs the train or predict module in its own workspace, with a `config.yml` in chap-core's layout:

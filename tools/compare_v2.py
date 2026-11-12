@@ -146,7 +146,7 @@ def compare(period: str, reference: Path, full: bool, only: list[str] | None) ->
 
 def main() -> None:
     """Parse arguments and run the comparison."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--period", choices=["week", "month"], required=True)
     parser.add_argument("--reference", type=Path, required=True, help="checkout of the v2 repo to compare with")
     parser.add_argument("--full", action="store_true", help="use the shipped epoch counts (slow)")

@@ -1,5 +1,7 @@
 """Unit tests for the period-aware model builder and the service config."""
 
+from pathlib import Path
+
 import pytest
 
 from chapkit_auto_regressive.model import (
@@ -22,31 +24,31 @@ from chapkit_auto_regressive.service import AutoRegressiveConfig
         (["2020-W05"], "week"),
     ],
 )
-def test_detect_period_type(periods, expected):
+def test_detect_period_type(periods: list[str], expected: str) -> None:
     assert detect_period_type(periods) == expected
 
 
 @pytest.mark.parametrize("periods", [[], ["2020-01-05"], ["2020", "2020-01"], ["2010-01", "2020W05"], ["2020SunW5"]])
-def test_detect_period_type_rejects_unknown_or_mixed(periods):
+def test_detect_period_type_rejects_unknown_or_mixed(periods: list[str]) -> None:
     with pytest.raises(ValueError):
         detect_period_type(periods)
 
 
-def test_weekly_defaults_match_auto_regressive_weekly_v2(monkeypatch):
+def test_weekly_defaults_match_auto_regressive_weekly_v2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AR_N_ITER", raising=False)
     model = build_model("week")
     assert (model.context_length, model.prediction_length, model.learning_rate, model.n_iter) == (52, 12, 1e-5, 1000)
     assert model.early_stopping is False
 
 
-def test_monthly_defaults_match_auto_regressive_monthly_v2(monkeypatch):
+def test_monthly_defaults_match_auto_regressive_monthly_v2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AR_N_ITER", raising=False)
     model = build_model("month")
     assert (model.context_length, model.prediction_length, model.learning_rate, model.n_iter) == (36, 3, 1e-3, 400)
     assert model.early_stopping is False
 
 
-def test_auto_and_none_take_the_period_default_and_explicit_values_win():
+def test_auto_and_none_take_the_period_default_and_explicit_values_win() -> None:
     options = {"context_length": AUTO, "learning_rate": None, "n_iter": 50, "prediction_length": 6}
     resolved = resolve_options("week", options)
     assert resolved["context_length"] == PERIOD_DEFAULTS["week"]["context_length"]
@@ -54,26 +56,26 @@ def test_auto_and_none_take_the_period_default_and_explicit_values_win():
     assert (resolved["n_iter"], resolved["prediction_length"]) == (50, 6)
 
 
-def test_auto_horizon_is_raised_to_the_requested_prediction_periods():
+def test_auto_horizon_is_raised_to_the_requested_prediction_periods() -> None:
     assert resolve_options("month", {}, prediction_periods=6)["prediction_length"] == 6
     assert resolve_options("month", {}, prediction_periods=2)["prediction_length"] == 3
     assert resolve_options("month", {"prediction_length": 2}, prediction_periods=6)["prediction_length"] == 2
 
 
-def test_build_model_applies_user_options_and_ignores_unknown():
+def test_build_model_applies_user_options_and_ignores_unknown() -> None:
     model = build_model("month", {"context_length": 18, "n_ensemble": 3, "cell": "simple", "bogus_option": 1})
     assert (model.context_length, model.n_ensemble, model.cell) == (18, 3, "simple")
     assert not hasattr(model, "bogus_option")
 
 
-def test_service_config_declares_every_model_option():
+def test_service_config_declares_every_model_option() -> None:
     # Chap only offers what the config (and the MLproject generated from it)
     # declares, so an option the code accepts but the config omits cannot be set.
     declared = set(AutoRegressiveConfig.model_fields) - {"prediction_periods", "additional_continuous_covariates"}
     assert declared == set(MODEL_OPTIONS)
 
 
-def test_service_config_defaults_reproduce_the_v2_models(monkeypatch):
+def test_service_config_defaults_reproduce_the_v2_models(monkeypatch: pytest.MonkeyPatch) -> None:
     # The config defaults, passed through as user_option_values, must build the
     # same model as the v2 defaults did.
     monkeypatch.delenv("AR_N_ITER", raising=False)
@@ -85,7 +87,7 @@ def test_service_config_defaults_reproduce_the_v2_models(monkeypatch):
         }
 
 
-def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged():
+def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged() -> None:
     # ISO weeks are a local addition to the vendored library; the formats the v2
     # models used must parse exactly as before.
     from datetime import datetime
@@ -108,7 +110,7 @@ def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged():
         ["2020-W53", "2021W01", "2020W52"],  # across a year boundary
     ],
 )
-def test_iso_weeks_are_ordered_by_date_not_text(periods):
+def test_iso_weeks_are_ordered_by_date_not_text(periods: list[str]) -> None:
     import pandas as pd
 
     from chapkit_auto_regressive.core.transforms import location_groups, period_start_date
@@ -119,7 +121,7 @@ def test_iso_weeks_are_ordered_by_date_not_text(periods):
     assert starts == sorted(starts)
 
 
-def test_monthly_and_range_order_is_unchanged():
+def test_monthly_and_range_order_is_unchanged() -> None:
     import pandas as pd
 
     from chapkit_auto_regressive.core.transforms import location_groups
@@ -131,3 +133,20 @@ def test_monthly_and_range_order_is_unchanged():
         frame = pd.DataFrame({"location": "a", "time_period": periods})
         ((_, rows),) = list(location_groups(frame))
         assert rows["time_period"].tolist() == sorted(periods)
+
+
+def test_run_config_reads_chap_layout_and_ignores_other_keys(tmp_path: Path) -> None:
+    from chapkit_auto_regressive.train import _read_config
+
+    config = tmp_path / "config.yml"
+    config.write_text(
+        "additional_continuous_covariates: [relative_humidity]\n"
+        "prediction_periods: 3\n"
+        "user_option_values: {n_ensemble: 1}\n"
+        "model_name: something chap also writes\n"
+    )
+    run = _read_config(str(config))
+    assert run.additional_continuous_covariates == ["relative_humidity"]
+    assert run.prediction_periods == 3
+    assert run.user_option_values == {"n_ensemble": 1}
+    assert _read_config(None).user_option_values is None

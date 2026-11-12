@@ -7,7 +7,9 @@ checked separately by tools/compare_v2.py, which needs their checkouts.
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -22,7 +24,9 @@ DATA = {
 HORIZON = {"week": 12, "month": 3}
 
 
-def _train_and_predict(tmp_path: Path, period: str, df: pd.DataFrame, covariates=(), **options) -> pd.DataFrame:
+def _train_and_predict(
+    tmp_path: Path, period: str, df: pd.DataFrame, covariates: Sequence[str] = (), **options: Any
+) -> pd.DataFrame:
     env = {**os.environ, "AR_N_ITER": "30"}
     config = tmp_path / "config.yml"
     config.write_text(
