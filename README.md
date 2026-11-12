@@ -131,7 +131,9 @@ With the same options and data, the forecasts are identical to those of the two 
 replaces, [auto_regressive_weekly_v2](https://github.com/chap-models/auto_regressive_weekly_v2)
 (with the weekly values above) and
 [auto_regressive_monthly_v2](https://github.com/chap-models/auto_regressive_monthly_v2) (with the
-defaults). `tools/compare_reference.py` runs a reference repo's own scripts in its locked
+defaults), with one exception: with `lr_schedule: warmup_cosine` the weekly forecasts differ by
+up to one case in some samples, because jax 0.12 rounds the schedule's cosine differently from the
+jax 0.10 the reference models pin. `tools/compare_reference.py` runs a reference repo's own scripts in its locked
 environment and this model's modules on the same data, and requires identical prediction CSVs;
 `tools/api_compare.py` does the same through the service API. CI runs `make compare`.
 
@@ -141,8 +143,8 @@ make compare-full  # full epoch counts
 make test-api      # through the Docker image's API
 ```
 
-Identical output depends on the numerical stack, which `uv.lock` pins (jax/jaxlib 0.10.1, flax
-0.12.7, optax 0.2.8, numpy 2.4.6, pandas 3.0.3, scipy 1.17.1), and on the platform. The same
+Identical output depends on the numerical stack, which `uv.lock` pins (jax/jaxlib 0.12.0.1, flax
+0.12.12, optax 0.2.9, numpy 2.5.4, pandas 3.1.1, scipy 1.18.1), and on the platform. The same
 model on Linux (the Docker image) and on macOS gives forecasts that differ by up to one case in
 some samples over a full-length training run, with the same mean; compare like with like.
 
