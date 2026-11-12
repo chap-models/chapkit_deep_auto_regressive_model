@@ -10,14 +10,13 @@ authors = [
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "chapkit>=2.5.0,<3",
-    # Vendored chap_auto_regressive library (src/chapkit_deep_auto_regressive/core/).
+    # The network and its training (src/chapkit_deep_auto_regressive/core/).
     "flax>=0.10.2",
     "jax>=0.4.34",
     "optax>=0.2.4",
     "scipy>=1.11",
     "numpy>=2.1",
     "pandas>=2.1",
-    "more-itertools>=10.0",
     # The train module reads the Chap model-configuration YAML.
     "pyyaml>=6.0",
 ]
@@ -52,9 +51,6 @@ ignore = ["D203", "D213"]
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-# The vendored library (and its tests) is kept as close to upstream as possible:
-# style and import rules only, no docstring or security rules.
-"src/chapkit_deep_auto_regressive/core/**/*.py" = ["D", "S"]
 # Tests assert, run subprocesses and unpickle their own fixtures; fine outside product code.
 "tests/**/*.py" = ["D", "S101", "S301", "S603", "S607"]
 # The comparison tools run the reference models and this one as subprocesses.
@@ -76,7 +72,6 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.13"
 files = ["src", "tests", "tools", "main.py"]
-exclude = ["^src/chapkit_deep_auto_regressive/core/", "^tests/library/"]
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -86,11 +81,6 @@ warn_unused_ignores = true
 strict_equality = true
 mypy_path = ["src", "tools"]
 explicit_package_bases = true
-
-# The vendored library is type-checked upstream (chap_auto_regressive), not here.
-[[tool.mypy.overrides]]
-module = "chapkit_deep_auto_regressive.core.*"
-ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -103,10 +93,12 @@ ignore_missing_imports = true
 
 [tool.pyright]
 include = ["src", "tests", "tools", "main.py"]
-exclude = ["**/.venv", "src/chapkit_deep_auto_regressive/core", "tests/library"]
+exclude = ["**/.venv"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 useLibraryCodeForTypes = true
 reportPrivateUsage = false
+# optax ships no type information and has no stub package; pyright reads its source instead.
+reportMissingTypeStubs = false
 reportUnusedFunction = false
 reportUnknownMemberType = false

@@ -12,7 +12,7 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
-from chapkit_deep_auto_regressive.core import AutoRegressiveModel
+from chapkit_deep_auto_regressive.core import DeepAutoRegressiveModel
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ def resolve_options(
 def build_model(
     options: Mapping[str, Any] | None = None,
     prediction_periods: int | None = None,
-) -> AutoRegressiveModel:
+) -> DeepAutoRegressiveModel:
     """Return the model with the defaults and any run ``user_option_values`` applied.
 
     Unknown option keys are ignored with a warning. ``AR_N_ITER`` overrides the
@@ -120,7 +120,7 @@ def build_model(
     resolved = resolve_options(options, prediction_periods)
     if "AR_N_ITER" in os.environ:
         resolved["n_iter"] = int(os.environ["AR_N_ITER"])
-    model = AutoRegressiveModel()
+    model = DeepAutoRegressiveModel()
     # Early stopping is opt-in. It holds out a trailing validation block and needs
     # a long series (the library raises when the history is too short), so a run
     # must ask for it explicitly rather than inherit it from the library default.

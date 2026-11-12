@@ -1,25 +1,31 @@
 """Early stopping: the split, the two-phase refit, and the short-series guard."""
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from chapkit_deep_auto_regressive.core import AutoRegressiveModel
-from chapkit_deep_auto_regressive.core.trainer import Trainer
+import chapkit_deep_auto_regressive.core.model as model_module
+from chapkit_deep_auto_regressive.core import DeepAutoRegressiveModel
+from chapkit_deep_auto_regressive.core.data_loader import DataSet, SimpleDataLoader, WindowLoader
+from chapkit_deep_auto_regressive.core.rnn_model import build_network
+from chapkit_deep_auto_regressive.core.trainer import LossFn, Trainer, TrainState
 
 
 def _frame(n_periods: int, n_locations: int = 3, seed: int = 0) -> pd.DataFrame:
     """A small synthetic panel in the shape the model expects."""
     rng = np.random.default_rng(seed)
-    rows = []
+    rows: list[dict[str, Any]] = []
     for location in range(n_locations):
         for period in range(n_periods):
             month = period % 12
+            rate = float(20 + 10 * np.sin(2 * np.pi * month / 12))
             rows.append(
                 {
                     "time_period": f"{2000 + period // 12}-{month + 1:02d}",
                     "location": f"loc{location}",
-                    "disease_cases": float(rng.poisson(20 + 10 * np.sin(2 * np.pi * month / 12))),
+                    "disease_cases": float(rng.poisson(rate)),
                     "rainfall": float(rng.normal(100, 20)),
                     "mean_temperature": float(20 + 5 * np.sin(2 * np.pi * month / 12)),
                     "population": 1000.0 * (location + 1),
@@ -28,9 +34,9 @@ def _frame(n_periods: int, n_locations: int = 3, seed: int = 0) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _model(**options) -> AutoRegressiveModel:
+def _model(**options: Any) -> DeepAutoRegressiveModel:
     """A small, fast model configuration."""
-    model = AutoRegressiveModel()
+    model = DeepAutoRegressiveModel()
     model.context_length = 6
     model.prediction_length = 2
     model.n_ensemble = 1
@@ -49,7 +55,9 @@ def test_split_is_contiguous_and_final_in_time():
     model._locations = ["loc0", "loc1", "loc2"]
     model._n_locations = 3
     data = _frame(40)
-    fit_loader, validation_loader = model._early_stopping_loaders(data)
+    loaders = model._early_stopping_loaders(data)
+    assert loaders is not None
+    fit_loader, validation_loader = loaders
 
     total_length = model.context_length + model.prediction_length
     n_validation = total_length + model.validation_periods
@@ -83,27 +91,24 @@ def test_disabled_or_externally_supplied_validation_returns_none():
 
     supplied = _model()
     supplied._locations, supplied._n_locations = ["loc0", "loc1", "loc2"], 3
-    supplied._validation_loader = object()
+    supplied._validation_loader = SimpleDataLoader(DataSet(np.zeros((3, 10, 1)), np.zeros((3, 10)), forecast_length=2))
     assert supplied._early_stopping_loaders(data) is None
 
 
-def test_training_selects_an_epoch_and_refits_on_everything():
+def test_training_selects_an_epoch_and_refits_on_everything(monkeypatch: pytest.MonkeyPatch) -> None:
     """The two phases run, and the second is capped by the epoch the first chose."""
     model = _model()
-    selected = []
+    selected: list[tuple[int, int]] = []
     original = Trainer.train
 
-    def recording(self, loader, loss_fn):
+    def recording(self: Trainer, loader: WindowLoader, loss_fn: LossFn) -> TrainState:
         state = original(self, loader, loss_fn)
         if self.best_epoch is not None:
             selected.append((self.best_epoch, self.n_iter))
         return state
 
-    Trainer.train = recording
-    try:
-        predictor = model.train(_frame(60))
-    finally:
-        Trainer.train = original
+    monkeypatch.setattr(Trainer, "train", recording)
+    predictor = model.train(_frame(60))
 
     assert predictor is not None
     assert selected, "the probe phase should have reported a best epoch"
@@ -120,12 +125,12 @@ def test_short_run_still_trains_when_early_stopping_is_off():
 
 def test_trainer_without_validation_keeps_the_final_state():
     """With no validation loader the trainer behaves as it did before."""
-    trainer = Trainer(model=None, n_iter=3)
+    trainer = Trainer(model=build_network(3), n_iter=3)
     assert trainer.best_epoch is None
     assert trainer.patience == 6
 
 
-def test_refit_budget_is_computed_in_steps_under_both_scalings():
+def test_refit_budget_is_computed_in_steps_under_both_scalings(monkeypatch: pytest.MonkeyPatch) -> None:
     """The hand-off must be a step budget, however it is scaled.
 
     The probe runs over the pre-split prefix and the refit over the whole frame,
@@ -136,16 +141,15 @@ def test_refit_budget_is_computed_in_steps_under_both_scalings():
     refit enforces is expressed in steps, so it never depends on which loader it
     happens to be iterating.
     """
-    import chapkit_deep_auto_regressive.core.model as model_module
 
-    def run(scaling):
+    def run(scaling: str) -> tuple[dict[str, Any], dict[str, Any]]:
         model = _model(refit_scaling=scaling)
         model.validation_periods = 4
-        records = []
-        original = model_module.Trainer
+        records: list[dict[str, Any]] = []
 
-        class Recording(original):
-            def train(self, loader, loss_fn):
+        class Recording(Trainer):
+            def train(self, data_loader: WindowLoader, loss_fn: LossFn) -> TrainState:
+                loader = data_loader
                 state = super().train(loader, loss_fn)
                 records.append(
                     {
@@ -158,11 +162,9 @@ def test_refit_budget_is_computed_in_steps_under_both_scalings():
                 )
                 return state
 
-        model_module.Trainer = Recording
-        try:
+        with monkeypatch.context() as patch:
+            patch.setattr(model_module, "Trainer", Recording)
             model.train(_frame(60))
-        finally:
-            model_module.Trainer = original
         return records[0], records[1]
 
     probe, refit = run("steps")

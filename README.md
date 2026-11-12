@@ -20,8 +20,9 @@ model, so predict needs no configuration.
 ## Weekly and monthly data
 
 The period type is not configured. Weekly (`start/end` date range or ISO week, `YYYYWww` /
-`YYYY-Www`) and monthly (`YYYY-MM`) data are both accepted and checked when training starts. One set
-of defaults serves both. For weekly data, four options have recommended values of their own:
+`YYYY-Www`) and monthly (`YYYY-MM`) data are both accepted and checked when training starts.
+Each location's periods are ordered by date, so ISO weeks (`2020W2`, `2020W10`, or both ISO forms
+mixed) stay in calendar order. One set of defaults serves both. For weekly data, four options have recommended values of their own:
 
 | option | default | recommended for weekly data |
 | --- | --- | --- |
@@ -54,7 +55,7 @@ periods.
 
 ```
 src/chapkit_deep_auto_regressive/
-  core/        vendored chap_auto_regressive library (network, trainer, data loading)
+  core/        the network, training loop and data handling
   model.py     defaults, option handling and period detection
   train.py     train entry point:   python -m chapkit_deep_auto_regressive.train <data> <model> --config <yml>
   predict.py   predict entry point: python -m chapkit_deep_auto_regressive.predict <model> <historic> <future> <out>
@@ -75,16 +76,14 @@ the Docker image installs it (non-editable) into the chapkit-py base image's ven
 ```bash
 make install       # uv sync
 make lint          # ruff (incl. docstring and security rules), mypy, pyright (strict), MLproject check
-make test          # unit, library and train/predict tests (fast epochs)
+make test          # unit, core and train/predict tests (fast epochs)
 make run           # build the image and serve on :8000
 ```
 
 Without Docker: `uv run uvicorn main:app --port 8000`.
 
 Linting and type checking follow chapkit's setup (ruff `E,W,F,I,D,S`, mypy, pyright in strict
-mode), except for the vendored `core/` library and its tests in `tests/library/`. Those get
-ruff's style and import rules only, so the copy stays close to upstream; their typing is a
-matter for `chap_auto_regressive`.
+mode) for the whole package and its tests.
 
 The service uses `ShellModelRunner` with `config_format="chap_core"`. Each train or predict job
 runs the train or predict module in its own workspace, with a `config.yml` in chap-core's layout:
@@ -102,26 +101,29 @@ make lint          # includes chapkit mlproject export --check
 
 `chapkit mlproject run .` serves the MLproject as the same service (`make test-mlproject`).
 
-The exported MLproject does not run directly under chap-core's own MLproject runner
-(`chap eval --model-name .`). That runner writes the configuration to
-`model_configuration_for_run.yaml` and passes it as `{model_config}`, whereas chapkit's exporter
-writes the literal `config.yml` the chapkit runner uses. The exporter also emits no environment
-hint (`uv_env` / `docker_env`), so the commands would run in chap-core's own environment. Serve
-the MLproject with chapkit, as the GHR model does.
+### Evaluating with the Chap CLI
 
-## Vendored library
+Run the model as a chapkit service and point `chap eval` at it, either a running service or the
+Docker image:
 
-The network, trainer and data loading come from
-[chap_auto_regressive](https://github.com/chap-models/chap_auto_regressive), vendored in as
-`chapkit_deep_auto_regressive.core` (from commit `c4d1d5c`). Apart from the package name it has
-three local changes:
+```bash
+make run           # in one terminal
+chap eval \
+  --model-name http://localhost:8000 --run-config.is-chapkit-model \
+  --dataset-csv example_data/weekly/training_data.csv \
+  --model-configuration-yaml configs/weekly_example.yaml \
+  --backtest-params.n-splits 3 --output-file eval.nc
 
-- ISO-week periods (`2020W05`, `2020-W05`) parse, the week format chapkit uses. Upstream reads
-  only `start/end` ranges.
-- Each location's periods are ordered by start date rather than as text, so ISO weeks such as
-  `2020W2` and `2020W10`, or the two ISO forms mixed, stay in calendar order.
-- With `lr_schedule: warmup_cosine` and `early_stopping: true` together, the early-stopping
-  probe's schedule is sized by the full series. Upstream sizes it by the probe's own windows.
+chap eval \
+  --model-name docker://ghcr.io/chap-models/chapkit_deep_auto_regressive_model:latest \
+  --dataset-csv example_data/monthly/training_data.csv \
+  --backtest-params.n-splits 3 --output-file eval.nc
+```
+
+`--model-name` with the repository itself (a local path or the GitHub URL), with or without
+`--run-config.as-chapkit`, does not work yet: chap-core runs the commands with its own Python, in
+which this package is not installed, and chapkit's MLproject export has no option to declare
+an environment (`uv_env` / `docker_env`).
 
 ## Reference check
 
@@ -140,7 +142,9 @@ make test-api      # through the Docker image's API
 ```
 
 Identical output depends on the numerical stack, which `uv.lock` pins (jax/jaxlib 0.10.1, flax
-0.12.7, optax 0.2.8, numpy 2.4.6, pandas 3.0.3, scipy 1.17.1).
+0.12.7, optax 0.2.8, numpy 2.4.6, pandas 3.0.3, scipy 1.17.1), and on the platform. The same
+model on Linux (the Docker image) and on macOS gives forecasts that differ by up to one case in
+some samples over a full-length training run, with the same mean; compare like with like.
 
 ## Configurations
 

@@ -1,7 +1,6 @@
 """Chapkit service for the deep auto-regressive (RNN) model, for weekly and monthly data.
 
-The shared ``chap_auto_regressive`` library is vendored in as
-``chapkit_deep_auto_regressive.core``.
+The network, training loop and data handling are in ``chapkit_deep_auto_regressive.core``.
 
 Design notes:
 

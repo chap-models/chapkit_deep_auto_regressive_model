@@ -1,3 +1,8 @@
+"""Feature extraction, scaling and period parsing."""
+
+from collections.abc import Sequence
+from typing import Any
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -10,7 +15,7 @@ from chapkit_deep_auto_regressive.core.transforms import (
 )
 
 
-def _rows(location, periods):
+def _rows(location: str, periods: Sequence[str]) -> list[dict[str, Any]]:
     return [
         {
             "location": location,
@@ -24,7 +29,7 @@ def _rows(location, periods):
     ]
 
 
-def test_get_series_rejects_ragged_period_counts():
+def test_get_series_rejects_ragged_period_counts() -> None:
     # Public dataframe input with differing period counts per location must raise
     # a targeted error naming the counts, not a low-level NumPy array error.
     ragged = pd.DataFrame(_rows("A", ["2020-01", "2020-02", "2020-03"]) + _rows("B", ["2020-01", "2020-02"]))
@@ -32,20 +37,22 @@ def test_get_series_rejects_ragged_period_counts():
         get_series(ragged)
 
 
-def test_zscaler_standardizes_first_element():
+def test_zscaler_standardizes_the_features_and_passes_the_target_through() -> None:
     mu = np.array([1.0, 2.0])
     std = np.array([2.0, 4.0])
     feats = np.array([[3.0, 6.0]])
-    out = ZScaler(mu, std)((feats,))
+    target = np.array([[7.0]])
+    out = ZScaler(mu, std)((feats, target))
     assert np.allclose(out[0], (feats - mu) / std)
+    assert out[1] is target
 
 
-def test_year_position_bounds():
+def test_year_position_bounds() -> None:
     assert year_position_from_period("2024-01") < 0.02
     assert year_position_from_period("2024-12") > 0.9
 
 
-def test_period_start_date_monthly_and_weekly():
+def test_period_start_date_monthly_and_weekly() -> None:
     assert period_start_date("2010-03").month == 3
     weekly = period_start_date("2003-12-29/2004-01-04")
     assert (weekly.year, weekly.month, weekly.day) == (2003, 12, 29)
@@ -54,19 +61,19 @@ def test_period_start_date_monthly_and_weekly():
 class _Predictors:
     """Minimal stand-in exposing ``predictors(0)`` for ``ZScaler.from_data``."""
 
-    def __init__(self, features):
+    def __init__(self, features: np.ndarray) -> None:
         self._features = features
 
-    def predictors(self, i):
+    def predictors(self, i: int) -> np.ndarray:
         return self._features
 
 
-def test_zscaler_handles_zero_variance_features():
+def test_zscaler_handles_zero_variance_features() -> None:
     # A constant feature (single location or static covariate) has std 0; the
     # scaler must not divide by zero and produce inf/NaN inputs.
     features = np.array([[[1.0, 5.0], [2.0, 5.0], [3.0, 5.0]]])  # second feature constant
     scaler = ZScaler.from_data(_Predictors(features))
     assert scaler.std[1] == 1.0  # zero variance floored to 1
-    scaled = scaler((features,))[0]
+    scaled = scaler((features, np.zeros(features.shape[:2])))[0]
     assert np.isfinite(scaled).all()
     assert np.allclose(scaled[..., 1], 0.0)  # constant feature standardizes to 0

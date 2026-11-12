@@ -1,24 +1,27 @@
 """The optional warmup + cosine-decay learning-rate schedule."""
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from chapkit_deep_auto_regressive.core import AutoRegressiveModel
+from chapkit_deep_auto_regressive.core import DeepAutoRegressiveModel
 
 
 def _frame(n_periods: int, n_locations: int = 3, seed: int = 0) -> pd.DataFrame:
     """A small synthetic panel in the shape the model expects."""
     rng = np.random.default_rng(seed)
-    rows = []
+    rows: list[dict[str, Any]] = []
     for location in range(n_locations):
         for period in range(n_periods):
             month = period % 12
+            rate = float(20 + 10 * np.sin(2 * np.pi * month / 12))
             rows.append(
                 {
                     "time_period": f"{2000 + period // 12}-{month + 1:02d}",
                     "location": f"loc{location}",
-                    "disease_cases": float(rng.poisson(20 + 10 * np.sin(2 * np.pi * month / 12))),
+                    "disease_cases": float(rng.poisson(rate)),
                     "rainfall": float(rng.normal(100, 20)),
                     "mean_temperature": float(20 + 5 * np.sin(2 * np.pi * month / 12)),
                     "population": 1000.0 * (location + 1),
@@ -27,9 +30,9 @@ def _frame(n_periods: int, n_locations: int = 3, seed: int = 0) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _model(**options) -> AutoRegressiveModel:
+def _model(**options: Any) -> DeepAutoRegressiveModel:
     """A small, fast model configuration."""
-    model = AutoRegressiveModel()
+    model = DeepAutoRegressiveModel()
     model.context_length = 6
     model.prediction_length = 2
     model.n_ensemble = 1
@@ -42,7 +45,7 @@ def _model(**options) -> AutoRegressiveModel:
     return model
 
 
-def test_warmup_cosine_schedule_shape():
+def test_warmup_cosine_schedule_shape() -> None:
     model = _model(lr_schedule="warmup_cosine", n_iter=100, learning_rate=1e-5)
     steps_per_epoch = 10
     schedule = model.learning_rate_for(steps_per_epoch)
@@ -53,14 +56,14 @@ def test_warmup_cosine_schedule_shape():
     assert np.isclose(schedule(1000 * steps_per_epoch), 1e-5)  # and stays there
 
 
-def test_constant_schedule_is_the_default_and_unknown_schedule_fails():
+def test_constant_schedule_is_the_default_and_unknown_schedule_fails() -> None:
     assert _model(learning_rate=1e-4).learning_rate_for(10) == 1e-4
     with pytest.raises(ValueError, match="lr_schedule"):
         _model(lr_schedule="cosine").learning_rate_for(10)
 
 
 @pytest.mark.parametrize("early_stopping", [False, True])
-def test_train_and_predict_with_warmup_cosine_schedule(early_stopping):
+def test_train_and_predict_with_warmup_cosine_schedule(early_stopping: bool) -> None:
     data = _frame(40)
     model = _model(lr_schedule="warmup_cosine", warmup_epochs=2, early_stopping=early_stopping)
     predictor = model.train(data)

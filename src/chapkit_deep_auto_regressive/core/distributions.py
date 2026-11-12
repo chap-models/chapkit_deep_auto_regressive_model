@@ -1,19 +1,20 @@
-"""Minimal probability distributions used by the flax auto-regressive model.
+"""Probability distributions for the network's output head.
 
-These classes were extracted from the original ``ch_modelling.models.jax_models``
-package, which also carried HMC/Bayesian sampling machinery that the flax
-auto-regressive model never used. Only the distribution primitives needed by
-``flax_model`` are kept here.
+The model uses [`nb_head`][chapkit_deep_auto_regressive.core.distributions.nb_head], a NaN-tolerant
+negative binomial. The other distributions are small, self-contained primitives.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import scipy
 from jax.scipy import stats
+from jax.typing import ArrayLike
+from numpy.typing import NDArray
 
 
 @dataclass(frozen=True)
@@ -26,7 +27,8 @@ class Normal:
 
     def sample(self, key: Any, shape: Sequence[int] = ()) -> Any:
         """Sample from the normal distribution."""
-        assert shape == ()
+        if tuple(shape) != ():
+            raise ValueError(f"Normal.sample draws one value per parameter; got shape {shape!r}")
         if hasattr(self.mu, "shape"):
             shape = self.mu.shape
         return jax.random.normal(key, shape) * self.sigma + self.mu
@@ -34,7 +36,8 @@ class Normal:
     def log_prob(self, x: Any) -> Any:
         """Log probability density at ``x``."""
         if self.ndim > 0:
-            assert self.ndim == 1
+            if self.ndim != 1:
+                raise ValueError(f"Normal supports ndim 0 or 1, got {self.ndim}")
             return stats.norm.logpdf(x, loc=self.mu, scale=self.sigma).sum()
         return stats.norm.logpdf(x, loc=self.mu, scale=self.sigma)
 
@@ -77,7 +80,7 @@ class NegativeBinomial2:
 class NegativeBinomial3:
     """Negative binomial parameterised by total count and logits."""
 
-    def __init__(self, total_count: Any, logits: Any = None) -> None:
+    def __init__(self, total_count: jax.Array, logits: jax.Array) -> None:
         """Store count/logits and derive the success probabilities."""
         self.total_count = total_count
         self.logits = logits
@@ -93,7 +96,7 @@ class NegativeBinomial3:
         """Distribution variance."""
         return self.mean / jax.nn.sigmoid(-self.logits)
 
-    def log_prob(self, value: Any) -> Any:
+    def log_prob(self, value: ArrayLike) -> jax.Array:
         """Log probability mass at ``value``."""
         log_unnormalized_prob = self.total_count * jax.nn.log_sigmoid(-self.logits) + value * jax.nn.log_sigmoid(
             self.logits
@@ -103,7 +106,7 @@ class NegativeBinomial3:
         )
         return log_unnormalized_prob - log_normalization
 
-    def sample(self, key: Any, shape: Any = ()) -> Any:
+    def sample(self, key: jax.Array, shape: int | tuple[int, ...] = ()) -> NDArray[Any]:
         """Sample counts via the scipy negative binomial, seeded from ``key``.
 
         The JAX ``key`` is folded into a seed for scipy's generator so that draws
@@ -128,9 +131,10 @@ class Poisson:
 
     rate: Any
 
-    def sample(self, key: Any, shape: tuple = ()) -> Any:
+    def sample(self, key: Any, shape: tuple[int, ...] = ()) -> Any:
         """Sample counts from the Poisson distribution."""
-        assert shape == ()
+        if shape != ():
+            raise ValueError(f"Poisson.sample draws one value per rate; got shape {shape!r}")
         if hasattr(self.rate, "shape"):
             shape = self.rate.shape
         return jax.random.poisson(key, self.rate, shape)
@@ -140,24 +144,20 @@ class Poisson:
         return stats.poisson.logpmf(x, self.rate)
 
 
-def skip_nan_distribution(dist: type) -> type:
-    """Wrap ``dist`` so that NaN observations contribute zero log-probability."""
+class NBSkipNaN(NegativeBinomial3):
+    """Negative binomial whose NaN observations contribute zero log-probability.
 
-    class SkipNaN(dist):  # type: ignore[valid-type, misc]
-        def log_prob(self, x: Any) -> Any:
-            nans = jnp.isnan(x)
-            masked = jnp.where(nans, 0, x)
-            res = jnp.where(nans, 0, super().log_prob(masked))
-            return res
+    Gaps in surveillance leave NaN targets; they must not add to the loss.
+    """
 
-    return SkipNaN
-
-
-# Negative-binomial head used by the auto-regressive model, NaN-tolerant.
-NBSkipNaN = skip_nan_distribution(NegativeBinomial3)
+    def log_prob(self, value: ArrayLike) -> jax.Array:
+        """Log probability mass at ``value``, and 0 where ``value`` is NaN."""
+        nans = jnp.isnan(value)
+        masked = jnp.where(nans, 0, value)
+        return jnp.where(nans, 0, super().log_prob(masked))
 
 
-def nb_head(eta: Any) -> Any:
+def nb_head(eta: jax.Array) -> NBSkipNaN:
     """Interpret a model's two-channel output ``eta`` as a negative-binomial.
 
     Channel 0 (passed through softplus) is the count and channel 1 is the logits.

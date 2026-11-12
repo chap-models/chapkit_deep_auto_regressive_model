@@ -12,12 +12,24 @@ location and time period and the columns ``location``, ``time_period``,
 """
 
 import re
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterator, Sequence
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
+
+from .data_loader import Array, FeaturePair, Features
+
+
+class FeatureSource(Protocol):
+    """Anything that exposes its feature array as ``predictors(0)``, such as a DataSet."""
+
+    def predictors(self, i: int) -> Features:
+        """Return array ``i``; ``0`` is the features."""
+        ...
+
 
 #: The covariates every configuration must provide. They are always the leading
 #: features, in this order; additional covariates are appended after them.
@@ -38,25 +50,24 @@ class ZScaler:
         std: Per-feature standard deviations, broadcast over locations and time.
     """
 
-    mu: np.ndarray
-    std: np.ndarray
+    mu: Array
+    std: Array
 
-    def __call__(self, x: tuple) -> tuple:
+    def __call__(self, x: FeaturePair) -> FeaturePair:
         """Standardize the feature array in a ``(features, ar_target)`` pair.
 
         Args:
-            x: A tuple whose first element is the feature array to scale; any
-                remaining elements (e.g. the auto-regressive target) are passed
-                through unchanged.
+            x: The features to scale and the auto-regressive target, which is
+                passed through unchanged.
 
         Returns:
-            The same tuple with its feature array standardized.
+            The same pair with its features standardized.
         """
-        i = 0
-        return x[:i] + ((x[i] - self.mu) / self.std,) + x[i + 1 :]
+        features, ar_target = x
+        return (features - self.mu) / self.std, ar_target
 
     @classmethod
-    def from_data(cls, data_set: Any) -> "ZScaler":
+    def from_data(cls, data_set: FeatureSource) -> "ZScaler":
         """Fit a scaler from a dataset's feature statistics.
 
         Args:
@@ -82,11 +93,10 @@ def location_groups(data: pd.DataFrame) -> Iterator[tuple[Any, pd.DataFrame]]:
 
     Locations are yielded in sorted (canonical) label order so that a location
     maps to the same embedding index regardless of the input row order — this
-    keeps ``train`` and ``predict`` aligned and matches the legacy model's
-    ``DataSet`` ordering. Within each location the rows are sorted by the start
-    date of their ``time_period`` (local change, see ``core/__init__.py``: text
-    order is chronological for ``YYYY-MM`` and ``start/end``, but not for ISO
-    weeks such as ``2020W2`` / ``2020W10`` or mixed ``2020W01`` / ``2020-W02``).
+    keeps ``train`` and ``predict`` aligned. Within each location the rows are
+    sorted by the start date of their ``time_period``. Text order would do for
+    ``YYYY-MM`` and ``start/end``, but not for ISO weeks such as ``2020W2`` /
+    ``2020W10`` or mixed ``2020W01`` / ``2020-W02``.
 
     Args:
         data: The input frame with a ``location`` and ``time_period`` column.
@@ -96,10 +106,11 @@ def location_groups(data: pd.DataFrame) -> Iterator[tuple[Any, pd.DataFrame]]:
     """
     for location, sub in data.groupby("location", sort=True):
         starts = [period_start_date(period) for period in sub["time_period"]]
-        yield location, sub.iloc[np.argsort(starts, kind="stable")]
+        order = sorted(range(len(starts)), key=starts.__getitem__)  # stable, so ties keep their order
+        yield location, sub.iloc[order]
 
 
-def get_series(data: pd.DataFrame, covariates: Sequence[str] = REQUIRED_COVARIATES) -> tuple[np.ndarray, np.ndarray]:
+def get_series(data: pd.DataFrame, covariates: Sequence[str] = REQUIRED_COVARIATES) -> tuple[Array, Array]:
     """Extract dense feature and target arrays from the input frame.
 
     For every location the function stacks one feature per ``covariates`` column
@@ -130,13 +141,13 @@ def get_series(data: pd.DataFrame, covariates: Sequence[str] = REQUIRED_COVARIAT
     missing = [c for c in covariates if c not in data.columns]
     if missing:
         raise ValueError(f"missing covariate column(s) {missing}; available columns: {list(data.columns)}")
-    xs = []
-    ys = []
-    counts = {}
+    xs: list[Array] = []
+    ys: list[Array] = []
+    counts: dict[Any, int] = {}
     for location, sub in location_groups(data):
         counts[location] = len(sub)
         yp = np.asarray([year_position_from_period(period) for period in sub["time_period"]])
-        features = [sub[name].to_numpy() for name in covariates]
+        features: list[Array] = [sub[name].to_numpy() for name in covariates]
         # Seasonal calendar features: the year-position ramp plus the first two
         # Fourier harmonics, which give the network a smooth, periodic seasonal
         # signal (a single ramp cannot express the seasonal shape on its own).
@@ -170,7 +181,7 @@ def period_start_date(period: str) -> datetime:
     text = str(period)
     if "/" in text:
         return datetime.fromisoformat(text.split("/")[0])
-    # Local addition to the vendored library (see core/__init__.py): ISO weeks.
+    # ISO weeks, the week format chapkit sends.
     iso_week = re.fullmatch(r"(\d{4})-?W(\d{1,2})", text)
     if iso_week:
         return datetime.fromisocalendar(int(iso_week[1]), int(iso_week[2]), 1)

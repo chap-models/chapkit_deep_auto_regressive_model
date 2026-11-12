@@ -92,8 +92,8 @@ def test_service_config_defaults_are_the_model_defaults(monkeypatch: pytest.Monk
 
 
 def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged() -> None:
-    # ISO weeks are a local addition to the vendored library; the formats it
-    # already read must parse exactly as upstream.
+    # ISO weeks parse to their Monday; the monthly and range formats are
+    # unaffected.
     from datetime import datetime
 
     from chapkit_deep_auto_regressive.core.transforms import period_start_date

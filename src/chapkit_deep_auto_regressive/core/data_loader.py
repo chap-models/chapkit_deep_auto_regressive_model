@@ -13,12 +13,38 @@ Each window yields three arrays:
 - ``y`` — the raw target over the whole window, used as the training label.
 """
 
-from typing import Callable, Iterable, Tuple
+from collections.abc import Callable, Iterator
+from typing import Any, Protocol
 
+import jax
 import numpy as np
+from numpy.typing import NDArray
+
+#: A numeric array (features, targets or a slice of them).
+Array = NDArray[Any]
+#: Features: a numpy array, or a jax array at predict time.
+Features = Array | jax.Array
+#: The ``(features, ar_target)`` pair a feature transform maps.
+FeaturePair = tuple[Features, Array]
+#: One training window: ``(x, ar_y, y)``.
+Window = tuple[Features, Array, Array]
+#: A feature transform applied to each produced window (e.g. a ZScaler).
+Transform = Callable[[FeaturePair], FeaturePair]
 
 
-def nan_helper(y: np.ndarray) -> tuple:
+class WindowLoader(Protocol):
+    """Anything that yields ``(x, ar_y, y)`` training windows."""
+
+    def __iter__(self) -> Iterator[Window]:
+        """Yield the windows."""
+        ...
+
+
+def _identity(pair: FeaturePair) -> FeaturePair:
+    return pair
+
+
+def nan_helper(y: Array) -> tuple[NDArray[np.bool_], Callable[[NDArray[np.bool_]], NDArray[np.intp]]]:
     """Return helpers for locating NaNs in a 1-D array.
 
     Args:
@@ -29,10 +55,14 @@ def nan_helper(y: np.ndarray) -> tuple:
         NaNs and ``index_fn`` maps such a mask to the integer positions it
         selects — the form expected by ``numpy.interp``.
     """
-    return np.isnan(y), lambda z: z.nonzero()[0]
+
+    def index_fn(z: NDArray[np.bool_]) -> NDArray[np.intp]:
+        return z.nonzero()[0]
+
+    return np.isnan(y), index_fn
 
 
-def interpolate_nans(y: np.ndarray) -> np.ndarray:
+def interpolate_nans(y: Array) -> Array:
     """Linearly interpolate over NaNs in each row of a 2-D array.
 
     Gaps in surveillance leave NaNs in the case series. Because the past target is
@@ -70,7 +100,7 @@ class DataSet:
     as windows are produced.
     """
 
-    def __init__(self, X: np.ndarray, y: np.ndarray, forecast_length: int, context_length: int | None = None):
+    def __init__(self, X: Features, y: Array, forecast_length: int, context_length: int | None = None) -> None:
         """Store the series and pre-compute the NaN-interpolated target.
 
         Args:
@@ -86,9 +116,9 @@ class DataSet:
         self._forecast_length = forecast_length
         self._total_length = self._context_length + forecast_length
         self._interpolated_y = interpolate_nans(y)
-        self._transform = lambda x: x
+        self._transform: Transform = _identity
 
-    def set_transform(self, transform: Callable) -> None:
+    def set_transform(self, transform: Transform) -> None:
         """Attach a feature transform applied to each produced window.
 
         Args:
@@ -97,7 +127,7 @@ class DataSet:
         """
         self._transform = transform
 
-    def predictors(self, i: int) -> np.ndarray:
+    def predictors(self, i: int) -> Features:
         """Return one of the underlying arrays by index.
 
         Args:
@@ -111,9 +141,9 @@ class DataSet:
 
     def __len__(self) -> int:
         """Return the number of windows that fit in the series."""
-        return self._X.shape[1] - self._total_length + 1
+        return int(self._X.shape[1] - self._total_length + 1)
 
-    def __getitem__(self, item: int) -> tuple:
+    def __getitem__(self, item: int) -> Window:
         """Return the training window starting at index ``item``.
 
         Args:
@@ -125,14 +155,15 @@ class DataSet:
             full window — with the attached feature transform applied.
         """
         start = item
-        return self._transform(
+        x, ar_y = self._transform(
             (
                 self._X[:, start : start + self._total_length],
                 self._interpolated_y[:, start : start + self._context_length],
             )
-        ) + (self._y[:, start : start + self._total_length],)
+        )
+        return x, ar_y, self._y[:, start : start + self._total_length]
 
-    def prediction_instance(self) -> tuple:
+    def prediction_instance(self) -> FeaturePair:
         """Return the most recent window, for forecasting.
 
         Returns:
@@ -146,7 +177,7 @@ class DataSet:
 class SimpleDataLoader:
     """Iterates over every window of a [`DataSet`][chapkit_deep_auto_regressive.core.data_loader.DataSet] in order."""
 
-    def __init__(self, dataset: DataSet):
+    def __init__(self, dataset: DataSet) -> None:
         """Wrap a dataset for iteration.
 
         Args:
@@ -154,7 +185,7 @@ class SimpleDataLoader:
         """
         self.dataset = dataset
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Window]:
         """Yield each window of the dataset in index order."""
         for i in range(len(self.dataset)):
             yield self.dataset[i]
@@ -171,12 +202,12 @@ class DataLoader:
 
     def __init__(
         self,
-        X: np.ndarray,
-        y: np.ndarray,
+        X: Array,
+        y: Array,
         forecast_length: int,
         context_length: int | None = None,
         do_validation: bool = False,
-    ):
+    ) -> None:
         """Build the windows and, optionally, the validation mask.
 
         Args:
@@ -204,22 +235,22 @@ class DataLoader:
 
     def __len__(self) -> int:
         """Return the number of training windows (excluding any masked out)."""
-        return np.sum(self.validation_mask)
+        return int(np.sum(self.validation_mask))
 
-    def __iter__(self) -> Iterable[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    def __iter__(self) -> Iterator[Window]:
         """Yield each non-masked training window as ``(x, ar_y, y)``."""
-        starts = np.arange(self._X.shape[1] - self._total_length + 1)[self.validation_mask]
-        permuted_starts = starts
+        # Window start offsets, in order, skipping those masked out for validation.
+        starts: list[int] = np.flatnonzero(self.validation_mask).tolist()
         return (
             (
                 self._X[:, start : start + self._total_length],
                 self._interpolated_y[:, start : start + self._context_length],
                 self._y[:, start : start + self._total_length],
             )
-            for start in permuted_starts
+            for start in starts
         )
 
-    def validation_set(self) -> tuple:
+    def validation_set(self) -> Window:
         """Return the held-out validation window as ``(x, ar_y, y)``.
 
         Returns:

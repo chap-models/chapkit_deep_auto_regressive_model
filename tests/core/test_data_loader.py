@@ -3,13 +3,13 @@ import numpy as np
 from chapkit_deep_auto_regressive.core.data_loader import DataSet, SimpleDataLoader, interpolate_nans
 
 
-def test_interpolate_nans_fills_linearly():
+def test_interpolate_nans_fills_linearly() -> None:
     out = interpolate_nans(np.array([[1.0, np.nan, 3.0]]))
     assert not np.isnan(out).any()
     assert out[0, 1] == 2.0
 
 
-def test_interpolate_nans_all_nan_row_does_not_crash():
+def test_interpolate_nans_all_nan_row_does_not_crash() -> None:
     # A location with no observed cases at all used to crash np.interp with
     # "array of sample points is empty"; it must now fill with finite zeros.
     out = interpolate_nans(np.array([[np.nan, np.nan, np.nan], [1.0, np.nan, 3.0]]))
@@ -18,7 +18,7 @@ def test_interpolate_nans_all_nan_row_does_not_crash():
     assert out[1, 1] == 2.0  # the other row still interpolates normally
 
 
-def test_dataset_window_shapes():
+def test_dataset_window_shapes() -> None:
     X = np.zeros((2, 10, 4), dtype="float32")
     y = np.ones((2, 10), dtype="float32")
     ds = DataSet(X, y, forecast_length=2, context_length=4)
@@ -30,7 +30,7 @@ def test_dataset_window_shapes():
     assert full_y.shape == (2, 6)
 
 
-def test_simple_data_loader_walks_all_windows():
+def test_simple_data_loader_walks_all_windows() -> None:
     X = np.zeros((1, 8, 3), dtype="float32")
     y = np.ones((1, 8), dtype="float32")
     ds = DataSet(X, y, forecast_length=2, context_length=3)

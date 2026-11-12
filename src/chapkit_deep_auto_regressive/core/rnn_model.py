@@ -10,7 +10,8 @@ an auto-regressive join ([`ARAdder`][chapkit_deep_auto_regressive.core.rnn_model
 Array convention: ``batch x location x time x feature``.
 """
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 import flax.linen as nn
 import jax
@@ -19,9 +20,42 @@ from flax.linen import SimpleCell
 
 # Dimensions: batch_dim x location_dim x time_dim x feature_dim
 
+#: A recurrent cell the network can use.
+Cell = SimpleCell | nn.GRUCell
+
 #: Recurrent cell types selectable by name. ``"gru"`` (gated) handles the
 #: multi-step forecast horizon markedly better than the plain ``"simple"`` RNN.
-CELL_TYPES = {"simple": SimpleCell, "gru": nn.GRUCell}
+CELL_TYPES: dict[str, type[Cell]] = {"simple": SimpleCell, "gru": nn.GRUCell}
+
+
+def _run_rnn(cell: Cell, inputs: jax.Array, initial_carry: Any = None) -> jax.Array:
+    """Run ``cell`` over the time axis and return its outputs.
+
+    Called inside a module's compact ``__call__``, so the ``nn.RNN`` it creates is
+    a submodule of that module, named as if it were created inline.
+    """
+    outputs: jax.Array | tuple[Any, jax.Array] = nn.RNN(cell)(inputs, initial_carry=initial_carry)
+    if isinstance(outputs, tuple):  # only with return_carry=True, which is not used here
+        raise TypeError("nn.RNN returned its carry; expected the outputs only")
+    return outputs
+
+
+def _dropout(x: jax.Array, rate: float, *, deterministic: bool, broadcast_dims: tuple[int, ...] = ()) -> jax.Array:
+    """Apply ``nn.Dropout`` (created inline, as a submodule of the calling module).
+
+    flax leaves ``Dropout.__call__`` unannotated, so its result is cast to the
+    array it is.
+    """
+    return cast(jax.Array, nn.Dropout(rate=rate, broadcast_dims=broadcast_dims, deterministic=deterministic)(x))
+
+
+def _cell_step(cell: Cell, carry: Any, x: jax.Array) -> tuple[Any, jax.Array]:
+    """Advance a recurrent cell one step; return ``(new_carry, output)``.
+
+    flax leaves the cells' ``__call__`` unannotated, so the result is cast to
+    the ``(carry, output)`` pair it is.
+    """
+    return cast(tuple[Any, jax.Array], cell(carry, x))
 
 
 class Preprocess(nn.Module):
@@ -49,7 +83,7 @@ class Preprocess(nn.Module):
     input_dropout_rate: float = 0.0
 
     @nn.compact
-    def __call__(self, x: Any, training: bool = False) -> Any:
+    def __call__(self, x: jax.Array, training: bool = False) -> jax.Array:
         """Embed locations, concatenate, and project the features.
 
         Args:
@@ -63,11 +97,12 @@ class Preprocess(nn.Module):
             # Feature dropout: zero entire covariate channels (one mask per feature,
             # shared across location/time) so the network can't over-rely on any
             # single (possibly noisy) covariate — robustness with many covariates.
-            x = nn.Dropout(
-                rate=self.input_dropout_rate,
+            x = _dropout(
+                x,
+                self.input_dropout_rate,
                 broadcast_dims=tuple(range(x.ndim - 1)),
                 deterministic=not training,
-            )(x)
+            )
         n_locations = x.shape[-3]
         loc = nn.Embed(num_embeddings=n_locations, features=self.embedding_dim)(jnp.arange(n_locations))
         axis = -2
@@ -79,9 +114,9 @@ class Preprocess(nn.Module):
         for i in range(len(layers)):
             x = nn.Dense(features=layers[i])(x)
             x = nn.relu(x)
-        x = nn.Dropout(rate=self.dropout_rate, deterministic=not training)(x)
+        x = _dropout(x, self.dropout_rate, deterministic=not training)
         x = nn.Dense(features=self.output_dim)(x)
-        return nn.Dropout(rate=self.dropout_rate, deterministic=not training)(x)
+        return _dropout(x, self.dropout_rate, deterministic=not training)
 
 
 class ARAdder(nn.Module):
@@ -93,7 +128,7 @@ class ARAdder(nn.Module):
     """
 
     @nn.compact
-    def __call__(self, x: Any, y: Any) -> Any:
+    def __call__(self, x: jax.Array, y: jax.Array) -> jax.Array:
         """Concatenate past targets onto the features.
 
         Args:
@@ -118,7 +153,7 @@ class MultiValueARAdder(nn.Module):
     """
 
     @nn.compact
-    def __call__(self, x: Any, y: Any) -> Any:
+    def __call__(self, x: jax.Array, y: jax.Array) -> jax.Array:
         """Concatenate the lagged target and a cross-location mix onto the features.
 
         Args:
@@ -156,16 +191,16 @@ class ARModel2(nn.Module):
     """
 
     preprocess: nn.Module
-    cell_pre: nn.RNNCellBase
-    cell_post: nn.RNNCellBase
-    ar_adder: ARAdder = ARAdder()
+    cell_pre: Cell
+    cell_post: Cell
+    ar_adder: ARAdder | MultiValueARAdder = ARAdder()
     output_dim: int = 2
     head_features: int = 6
     n_layers: int = 1
     recursive_decode: bool = False
 
     @nn.compact
-    def __call__(self, x: Any, y: Any, training: bool = False) -> Any:
+    def __call__(self, x: jax.Array, y: jax.Array, training: bool = False) -> jax.Array:
         """Run the encoder/decoder forward pass over a window.
 
         Args:
@@ -188,17 +223,17 @@ class ARModel2(nn.Module):
             # identically (free-running), so there is no train/predict mismatch.
             d1, d2 = nn.Dense(self.head_features), nn.Dense(self.output_dim)
 
-            def head(h):
+            def head(h: jax.Array) -> jax.Array:
                 return d2(nn.relu(d1(h)))
 
             prev_val = jnp.log1p(jnp.maximum(y[..., -1:], 0.0))  # last observed (log1p)
             if self.n_layers <= 1:
                 # Single layer: encode the context with one RNN, decode the
                 # horizon with one cell (unchanged from the original behaviour).
-                states = nn.RNN(self.cell_pre)(prev_x)
+                states = _run_rnn(self.cell_pre, prev_x)
                 ctx_eta = head(states)
-                carries = [states[..., -1, :]]
-                dec_cells: list[nn.RNNCellBase] = [self.cell_post]
+                carries: list[Any] = [states[..., -1, :]]
+                dec_cells: list[Cell] = [self.cell_post]
             else:
                 # Stacked recursive decode: encode the context with n_layers
                 # stacked RNNs (each layer's final state seeds the matching
@@ -208,36 +243,36 @@ class ARModel2(nn.Module):
                 cell_cls, feats = type(self.cell_pre), self.cell_pre.features
                 enc, carries = prev_x, []
                 for _ in range(self.n_layers):
-                    enc = nn.RNN(cell_cls(features=feats))(enc)
+                    enc = _run_rnn(cell_cls(features=feats), enc)
                     carries.append(enc[..., -1, :])
                 ctx_eta = head(enc)
                 dec_cells = [cell_cls(features=feats) for _ in range(self.n_layers)]
-            etas = []
+            etas: list[jax.Array] = []
             for t in range(future_x.shape[-2]):
                 # The bottom decoder cell sees the fed-back prediction; each higher
                 # cell consumes the cell below it. Carries thread across horizon steps.
                 layer_in = jnp.concatenate([prev_val, future_x[..., t, :]], axis=-1)
                 for layer, cell in enumerate(dec_cells):
-                    carries[layer], layer_in = cell(carries[layer], layer_in)
+                    carries[layer], layer_in = _cell_step(cell, carries[layer], layer_in)
                 eta_t = head(layer_in)
                 etas.append(eta_t)
                 mean = jax.nn.softplus(eta_t[..., 0]) * jnp.exp(eta_t[..., 1])  # NB mean
                 prev_val = jnp.log1p(jnp.maximum(mean, 0.0))[..., None]
             return jnp.concatenate([ctx_eta, jnp.stack(etas, axis=-2)], axis=-2)
         if self.n_layers <= 1:
-            states = nn.RNN(self.cell_pre)(prev_x)
-            new_states = nn.RNN(self.cell_post)(future_x, initial_carry=states[..., -1, :])
+            states = _run_rnn(self.cell_pre, prev_x)
+            new_states = _run_rnn(self.cell_post, future_x, initial_carry=states[..., -1, :])
         else:
             # Stacked encoder/decoder: each encoder layer's final state seeds the
             # matching decoder layer, giving the forecast horizon more depth.
             cell_cls, feats = type(self.cell_pre), self.cell_pre.features
-            enc, carries = prev_x, []
+            enc, encoder_carries = prev_x, list[jax.Array]()
             for _ in range(self.n_layers):
-                enc = nn.RNN(cell_cls(features=feats))(enc)
-                carries.append(enc[..., -1, :])
+                enc = _run_rnn(cell_cls(features=feats), enc)
+                encoder_carries.append(enc[..., -1, :])
             dec = future_x
             for layer in range(self.n_layers):
-                dec = nn.RNN(cell_cls(features=feats))(dec, initial_carry=carries[layer])
+                dec = _run_rnn(cell_cls(features=feats), dec, initial_carry=encoder_carries[layer])
             states, new_states = enc, dec
         x = jnp.concatenate([states, new_states], axis=-2)
         x = nn.Dense(features=self.head_features)(x)
@@ -299,14 +334,19 @@ def build_network(
     )
 
 
-# Back-compat: the original named factories. ``"base"`` builds the default network
-# (now GRU-based); ``"multi_value"`` swaps in the cross-location auto-regressive join.
-model_makers = {
-    "base": lambda n_locations: build_network(n_locations),
-    "multi_value": lambda n_locations: ARModel2(
+def _multi_value_network(n_locations: int) -> ARModel2:
+    """A small network with the cross-location auto-regressive join."""
+    return ARModel2(
         Preprocess(n_locations=n_locations, output_dim=2, dropout_rate=0.2),
         nn.SimpleCell(features=4),
         nn.SimpleCell(features=4),
         ar_adder=MultiValueARAdder(),
-    ),
+    )
+
+
+#: Named network factories. ``"base"`` builds the default network (GRU-based);
+#: ``"multi_value"`` swaps in the cross-location auto-regressive join.
+model_makers: dict[str, Callable[[int], ARModel2]] = {
+    "base": build_network,
+    "multi_value": _multi_value_network,
 }

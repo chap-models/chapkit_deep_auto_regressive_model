@@ -7,15 +7,20 @@ penalty on the weight matrices is added for regularization.
 """
 
 import logging
-from typing import Any, Callable, Optional, Tuple
+from collections.abc import Callable
+from typing import Any, cast
 
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import optax
 from flax.training import train_state
-from more_itertools import peekable
+from jax.typing import ArrayLike
 
-from .data_loader import DataLoader
+from .data_loader import WindowLoader
+
+#: Maps the network output ``eta`` and the window's target to a scalar loss.
+LossFn = Callable[[jax.Array, ArrayLike], jax.Array]
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +35,22 @@ class TrainState(train_state.TrainState):
     key: jax.Array
 
 
-def l2_regularization(params: Any, scale: float = 1.0) -> Any:
+#: One compiled gradient step: ``(state, dropout_key, x, ar_y, y) -> (state, loss)``.
+TrainStep = Callable[[TrainState, jax.Array, ArrayLike, ArrayLike, ArrayLike], tuple[TrainState, jax.Array]]
+#: The compiled validation loss: ``(state, x, ar_y, y) -> loss``.
+ValidationLoss = Callable[[TrainState, ArrayLike, ArrayLike, ArrayLike], jax.Array]
+
+
+def _apply(state: "TrainState", params: Any, *inputs: ArrayLike, **kwargs: Any) -> jax.Array:
+    """Run the network through ``state.apply_fn``.
+
+    flax types ``TrainState.apply_fn`` as a bare ``Callable``, so the network
+    output is cast to the array it is.
+    """
+    return cast(jax.Array, state.apply_fn(params, *inputs, **kwargs))
+
+
+def l2_regularization(params: Any, scale: float = 1.0) -> jax.Array:
     """Sum of squared weight-matrix entries, used as an L2 penalty.
 
     Only rank-2 parameters (weight matrices) are penalized; biases and other
@@ -43,7 +63,8 @@ def l2_regularization(params: Any, scale: float = 1.0) -> Any:
     Returns:
         The scaled L2 penalty as a scalar.
     """
-    return sum(jnp.sum(jnp.square(p)) for p in jax.tree_util.tree_leaves(params) if p.ndim == 2) * scale
+    leaves: list[jax.Array] = jax.tree_util.tree_leaves(params)
+    return sum((jnp.sum(jnp.square(p)) for p in leaves if p.ndim == 2), start=jnp.zeros(())) * scale
 
 
 class Trainer:
@@ -57,15 +78,15 @@ class Trainer:
 
     def __init__(
         self,
-        model: Any,
+        model: nn.Module,
         n_iter: int = 3000,
         learning_rate: float | optax.Schedule = 1e-5,
-        validation_loader: Optional[DataLoader] = None,
+        validation_loader: WindowLoader | None = None,
         seed: int = 0,
         eval_every: int = 5,
         patience: int = 6,
         max_steps: int | None = None,
-    ):
+    ) -> None:
         """Configure the trainer.
 
         Args:
@@ -96,15 +117,15 @@ class Trainer:
         self.patience = patience
         self.max_steps = max_steps
         #: Epoch at which the best validation loss was seen, set by ``train``.
-        self.best_epoch: Optional[int] = None
+        self.best_epoch: int | None = None
         #: Gradient steps taken to reach the best validation loss, set by
         #: ``train``. This, not ``best_epoch``, is what transfers to a run over a
         #: different set of windows.
-        self.best_step: Optional[int] = None
+        self.best_step: int | None = None
         #: The best validation loss seen, set by ``train``.
-        self.best_validation_loss: Optional[float] = None
+        self.best_validation_loss: float | None = None
 
-    def train(self, data_loader: DataLoader, loss_fn: Callable) -> "TrainState":
+    def train(self, data_loader: WindowLoader, loss_fn: LossFn) -> TrainState:
         """Train the model and return the final state.
 
         Initializes parameters from the first window, then repeatedly applies a
@@ -121,20 +142,21 @@ class Trainer:
             The final [`TrainState`][chapkit_deep_auto_regressive.core.trainer.TrainState] holding the
             trained parameters.
         """
-        ix, iar_y, iy = peekable(iter(data_loader)).peek()
+        ix, iar_y, _ = next(iter(data_loader))
         params = self.model.init(jax.random.PRNGKey(self.seed), ix, iar_y, training=False)
         dropout_key = jax.random.PRNGKey(self.seed + 40)
 
-        training_state = TrainState.create(
+        training_state: TrainState = TrainState.create(
             apply_fn=self.model.apply, params=params, tx=optax.adam(self.learning_rate), key=dropout_key
         )
 
-        @jax.jit
-        def train_step(state: TrainState, dropout_key, x, ar_y, y) -> Tuple[TrainState, jnp.ndarray]:
+        def train_step_fn(
+            state: TrainState, dropout_key: jax.Array, x: ArrayLike, ar_y: ArrayLike, y: ArrayLike
+        ) -> tuple[TrainState, jax.Array]:
             dropout_train_key = jax.random.fold_in(key=dropout_key, data=state.step)
 
-            def loss_func(params):
-                eta = state.apply_fn(params, x, ar_y, training=True, rngs={"dropout": dropout_train_key})
+            def loss_func(params: Any) -> jax.Array:
+                eta = _apply(state, params, x, ar_y, training=True, rngs={"dropout": dropout_train_key})
                 return loss_fn(eta, y) + l2_regularization(params, 0.001)
 
             grad_func = jax.value_and_grad(loss_func)
@@ -142,45 +164,52 @@ class Trainer:
             state = state.apply_gradients(grads=grad)
             return state, loss
 
-        @jax.jit
-        def get_validation_loss(state: TrainState, x, ar_y, y):
-            return loss_fn(state.apply_fn(state.params, x, ar_y, training=False), y)
+        def validation_loss_fn(state: TrainState, x: ArrayLike, ar_y: ArrayLike, y: ArrayLike) -> jax.Array:
+            return loss_fn(_apply(state, state.params, x, ar_y, training=False), y)
 
-        def validation_loss() -> float:
+        # jax.jit's wrapper is untyped; the compiled functions keep the signatures above.
+        train_step = cast(TrainStep, jax.jit(train_step_fn))
+        get_validation_loss = cast(ValidationLoss, jax.jit(validation_loss_fn))
+
+        def validation_loss(loader: WindowLoader) -> float:
             total = 0.0
-            for v_x, v_ar, v_y in iter(self._validation_loader):
+            for v_x, v_ar, v_y in loader:
                 total += float(get_validation_loss(training_state, v_x, v_ar, v_y))
             return total
 
-        best_state, best_loss, best_epoch, since_best = training_state, float("inf"), 0, 0
+        validation_loader = self._validation_loader
+        cur_loss: jax.Array | None = None
+        best_state: TrainState = training_state
+        best_loss, best_epoch, since_best = float("inf"), 0, 0
         for i in range(self.n_iter):
-            for x, ar_y, y in iter(data_loader):
+            for x, ar_y, y in data_loader:
                 if self.max_steps is not None and int(training_state.step) >= self.max_steps:
                     break
                 training_state, cur_loss = train_step(training_state, dropout_key, x, ar_y, y)
             if self.max_steps is not None and int(training_state.step) >= self.max_steps:
                 logger.info("reached the %d-step budget at epoch %d", self.max_steps, i)
                 break
-            if self._validation_loader is None:
+            if validation_loader is None:
                 if i % 10 == 0:
                     logger.info("epoch %d: loss=%s", i, cur_loss)
                 continue
             if i % self.eval_every:
                 continue
-            current = validation_loss()
+            current = validation_loss(validation_loader)
             logger.info("epoch %d: loss=%s validation_loss=%s", i, cur_loss, current)
             if current < best_loss:
                 # Keeping the best parameters, not the last, is the whole point:
                 # held-out loss on these series bottoms out early and then climbs
                 # for the rest of the run.
-                best_state, best_loss, best_epoch, since_best = training_state, current, i, 0
+                best_state = training_state
+                best_loss, best_epoch, since_best = current, i, 0
                 continue
             since_best += 1
             if self.patience and since_best >= self.patience:
                 logger.info("early stopping at epoch %d; best was epoch %d (%.4f)", i, best_epoch, best_loss)
                 break
 
-        if self._validation_loader is None:
+        if validation_loader is None:
             return training_state
         self.best_epoch, self.best_validation_loss = best_epoch, best_loss
         self.best_step = int(best_state.step)

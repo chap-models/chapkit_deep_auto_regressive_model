@@ -18,7 +18,7 @@ import pandas as pd
 import yaml
 from pydantic import BaseModel
 
-from chapkit_deep_auto_regressive.core import AutoRegressiveModel
+from chapkit_deep_auto_regressive.core import DeepAutoRegressiveModel
 from chapkit_deep_auto_regressive.model import build_model, detect_period_type
 
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +41,7 @@ def _read_config(config_path: str | None) -> RunConfig:
         return RunConfig.model_validate(yaml.safe_load(f) or {})
 
 
-def _clamp_context_length(model: AutoRegressiveModel, data: pd.DataFrame) -> None:
+def _clamp_context_length(model: DeepAutoRegressiveModel, data: pd.DataFrame) -> None:
     """Shrink ``context_length`` so the training data yields at least one window.
 
     Training needs ``context_length + prediction_length`` periods per window and

@@ -1,6 +1,6 @@
 """The public model and its trained predictor.
 
-[`AutoRegressiveModel`][chapkit_deep_auto_regressive.core.model.AutoRegressiveModel] is the estimator CHAP
+[`DeepAutoRegressiveModel`][chapkit_deep_auto_regressive.core.model.DeepAutoRegressiveModel] is the estimator CHAP
 trains; its ``train`` method returns a
 [`FlaxPredictor`][chapkit_deep_auto_regressive.core.model.FlaxPredictor] that produces probabilistic
 forecasts. Both share the same output head — the network emits two channels per
@@ -13,20 +13,52 @@ and time period); the model itself has no dependency on chap-core.
 
 import logging
 import pickle
-from typing import Any, Callable, Sequence
+from collections.abc import Sequence
+from typing import Any, TypedDict
 
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import pandas as pd
+from jax.typing import ArrayLike
+from numpy.typing import NDArray
 
 from .data_loader import DataSet as DLDataSet
-from .data_loader import SimpleDataLoader
+from .data_loader import Features, SimpleDataLoader, Transform
 from .distributions import nb_head
 from .rnn_model import build_network
 from .trainer import Trainer
 from .transforms import REQUIRED_COVARIATES, ZScaler, get_series, location_groups
+
+
+class Architecture(TypedDict):
+    """The network hyperparameters, persisted with a trained predictor."""
+
+    cell: str
+    rnn_features: int
+    preprocess_hidden: int
+    preprocess_output: int
+    embedding_dim: int
+    head_features: int
+    rnn_layers: int
+    recursive_decode: bool
+    dropout_rate: float
+    input_dropout_rate: float
+
+
+def _apply_network(model: nn.Module, params: Any, x: Features, y: ArrayLike) -> jax.Array:
+    """Run the network forward and return its output ``eta``.
+
+    ``nn.Module.apply`` also returns the updated state when ``mutable`` is set,
+    which is never the case here.
+    """
+    eta: jax.Array | tuple[Any, Any] = model.apply(params, x, y)
+    if isinstance(eta, tuple):
+        raise TypeError("the network returned mutable state; expected its output only")
+    return eta
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +68,7 @@ def _check_predict_inputs(
     future: pd.DataFrame,
     prediction_length: int,
     context_length: int,
-    training_locations: list | None = None,
+    training_locations: list[Any] | None = None,
 ) -> None:
     """Validate the history/future frames before forecasting.
 
@@ -82,7 +114,7 @@ def _check_predict_inputs(
         )
 
 
-def _forecast_frame(future: pd.DataFrame, samples: Any) -> pd.DataFrame:
+def _forecast_frame(future: pd.DataFrame, samples: NDArray[Any]) -> pd.DataFrame:
     """Assemble the prediction output frame from per-location samples.
 
     Args:
@@ -96,7 +128,7 @@ def _forecast_frame(future: pd.DataFrame, samples: Any) -> pd.DataFrame:
         ``sample_i`` column per draw.
     """
     groups = list(location_groups(future))
-    frames = []
+    frames: list[pd.DataFrame] = []
     for (location, sub), location_samples in zip(groups, samples):
         location_samples = np.asarray(location_samples)
         frame = pd.DataFrame({f"sample_{i}": location_samples[:, i] for i in range(location_samples.shape[-1])})
@@ -112,7 +144,8 @@ def _forecast_frame(future: pd.DataFrame, samples: Any) -> pd.DataFrame:
 class FlaxPredictor:
     """A trained model that turns history and future covariates into samples.
 
-    Produced by [`AutoRegressiveModel.train`][chapkit_deep_auto_regressive.core.model.AutoRegressiveModel.train].
+    Produced by
+    [`DeepAutoRegressiveModel.train`][chapkit_deep_auto_regressive.core.model.DeepAutoRegressiveModel.train].
     It holds the fitted network parameters and the feature scaler, and can be
     pickled to disk and reloaded.
 
@@ -126,36 +159,35 @@ class FlaxPredictor:
     def __init__(
         self,
         params: Any,
-        transform: Callable,
-        architecture: dict,
+        transform: Transform,
+        architecture: Architecture,
         prediction_length: int,
         context_length: int,
-        locations: list | None = None,
+        locations: list[Any] | None = None,
         covariates: Sequence[str] = REQUIRED_COVARIATES,
-    ):
+    ) -> None:
         # The network is rebuilt from the saved architecture spec, so a loaded
         # predictor is self-contained and does not depend on how the caller's
-        # AutoRegressiveModel happens to be configured.
-        self.architecture = dict(architecture)
+        # DeepAutoRegressiveModel happens to be configured.
+        self.architecture: Architecture = architecture.copy()
         # Canonical (sorted) training locations; predictions must cover this exact
         # set because the network's per-location embeddings are indexed by sorted
-        # position. None only for predictors loaded from a legacy pickle.
+        # position. None when constructed without them, which skips the check.
         self.locations = list(locations) if locations is not None else None
         self.model = build_network(len(self.locations) if self.locations else 1, **self.architecture)
         # Accept either a single parameter pytree or a list of them (a deep
         # ensemble). Stored as a list; predict pools the members' samples.
-        self._params_list = params if isinstance(params, list) else [params]
+        self._params_list: list[Any] = params if isinstance(params, list) else [params]
         self._params = self._params_list[0]
         self._transform = transform
         self.prediction_length = prediction_length
         self.context_length = context_length
         # The covariate columns (in order) the network was trained on; predict
-        # must build features the same way. Defaults to the required covariates
-        # for predictors loaded from a legacy pickle that predate this field.
+        # must build features the same way.
         self.covariates = tuple(covariates)
         self.rng_key = jax.random.PRNGKey(1234)
 
-    def get_samples(self, eta: Any, n_samples: int) -> Any:
+    def get_samples(self, eta: jax.Array, n_samples: int) -> NDArray[Any]:
         """Draw samples from the output distribution for each period.
 
         Args:
@@ -192,18 +224,18 @@ class FlaxPredictor:
         full_x = jnp.concatenate([prev_values, x], axis=1)
         dataset = DLDataSet(full_x, prev_y, forecast_length=self.prediction_length, context_length=self.context_length)
         dataset.set_transform(self._transform)
-        x, y = dataset.prediction_instance()
+        window_x, window_y = dataset.prediction_instance()
         n_prev = prev_values.shape[1]
         # Pool samples across the ensemble members. Each member draws an equal
         # share of num_samples (the first members absorb the remainder) so the
         # output keeps exactly num_samples columns.
         n_members = len(self._params_list)
         shares = [num_samples // n_members + (1 if k < num_samples % n_members else 0) for k in range(n_members)]
-        member_samples = []
+        member_samples: list[NDArray[Any]] = []
         for params, share in zip(self._params_list, shares):
             if share == 0:
                 continue
-            eta = self.model.apply(params, x, y)
+            eta = _apply_network(self.model, params, window_x, window_y)
             member_samples.append(np.asarray(self.get_samples(eta[:, n_prev - 1 :], share)))
         samples = np.concatenate(member_samples, axis=-1)  # pool along the trailing sample axis
         return _forecast_frame(future, samples)
@@ -243,8 +275,9 @@ class FlaxPredictor:
         Returns:
             The reconstructed ``FlaxPredictor``.
         """
+        # The file is one this package wrote (save), in the job's own workspace.
         with open(path, "rb") as f:
-            payload = pickle.load(f)
+            payload = pickle.load(f)  # noqa: S301
         return cls(
             payload["params_list"],
             payload["transform"],
@@ -256,7 +289,7 @@ class FlaxPredictor:
         )
 
 
-class AutoRegressiveModel:
+class DeepAutoRegressiveModel:
     """Deep auto-regressive forecaster for disease case counts.
 
     The estimator wraps the [`ARModel2`][chapkit_deep_auto_regressive.core.rnn_model.ARModel2] network: it
@@ -354,14 +387,15 @@ class AutoRegressiveModel:
     input_dropout_rate: float = 0.0
     distribution_head = staticmethod(nb_head)
 
-    def __init__(self, rng_key=jax.random.PRNGKey(100)):
+    def __init__(self, rng_key: jax.Array = jax.random.PRNGKey(100)) -> None:
         self.rng_key = rng_key
-        self._model = None
-        self._n_locations = None
-        self._params = None
-        self._validation_loader = None
-        self._locations: list | None = None
-        self._validation_locations: list | None = None
+        self._model: nn.Module | None = None
+        self._n_locations: int | None = None
+        self._params: Any = None
+        self._transform: Transform | None = None
+        self._validation_loader: SimpleDataLoader | None = None
+        self._locations: list[Any] | None = None
+        self._validation_locations: list[Any] | None = None
 
     @property
     def covariates(self) -> tuple[str, ...]:
@@ -374,7 +408,7 @@ class AutoRegressiveModel:
         return REQUIRED_COVARIATES + extra
 
     @property
-    def architecture(self) -> dict:
+    def architecture(self) -> Architecture:
         """The network hyperparameters, persisted so predict rebuilds the same net."""
         return {
             "cell": self.cell,
@@ -389,7 +423,7 @@ class AutoRegressiveModel:
             "input_dropout_rate": self.input_dropout_rate,
         }
 
-    def set_model(self, model: Any) -> None:
+    def set_model(self, model: nn.Module) -> None:
         """Override the network instance instead of building one lazily.
 
         Args:
@@ -398,10 +432,13 @@ class AutoRegressiveModel:
         self._model = model
 
     @property
-    def model(self) -> Any:
+    def model(self) -> nn.Module:
         """The flax network, built lazily from the architecture on first access."""
         if self._model is None:
-            self._model = build_network(self._n_locations, **self.architecture)
+            # The location count only sizes the embedding at call time, from the
+            # input shape; 1 stands in before training has seen the data.
+            n_locations = self._n_locations if self._n_locations is not None else 1
+            self._model = build_network(n_locations, **self.architecture)
         return self._model
 
     def learning_rate_for(self, steps_per_epoch: int) -> float | optax.Schedule:
@@ -409,7 +446,7 @@ class AutoRegressiveModel:
 
         The schedule spans ``n_iter`` epochs of ``steps_per_epoch`` steps. Both
         an early-stopping probe and its refit get the schedule sized by the full
-        series (local change, see ``core/__init__.py``).
+        series, so they follow the same schedule.
 
         Args:
             steps_per_epoch: Optimizer steps per epoch (one per training window).
@@ -445,7 +482,7 @@ class AutoRegressiveModel:
         are the labels the validation loss is computed against.
 
         The fitted feature scaler is attached later, inside
-        [`train`][chapkit_deep_auto_regressive.core.model.AutoRegressiveModel.train], so the
+        [`train`][chapkit_deep_auto_regressive.core.model.DeepAutoRegressiveModel.train], so the
         validation features are standardized the same way as the training ones.
 
         Args:
@@ -474,7 +511,7 @@ class AutoRegressiveModel:
             DLDataSet(full_x, full_y, forecast_length=self.prediction_length, context_length=self.context_length)
         )
 
-    def _early_stopping_loaders(self, data: pd.DataFrame) -> tuple | None:
+    def _early_stopping_loaders(self, data: pd.DataFrame) -> tuple[SimpleDataLoader, SimpleDataLoader] | None:
         """Split the tail off the training series to select a stopping epoch.
 
         The split is contiguous and final in time -- a random split would let the
@@ -556,10 +593,11 @@ class AutoRegressiveModel:
             parameters and the fitted scaler.
         """
         self._locations = sorted(data["location"].unique())
-        self._n_locations = data["location"].nunique()
+        self._n_locations = int(data["location"].nunique())
         data_set = self._get_dataset(data)
-        self._transform = ZScaler.from_data(data_set)
-        data_set.set_transform(self._transform)
+        transform = ZScaler.from_data(data_set)
+        self._transform = transform
+        data_set.set_transform(transform)
         early_stopping_loaders = self._early_stopping_loaders(data)
         # Standardize the validation window with the same fitted scaler, otherwise
         # its features stay on the raw scale and the reported validation loss is
@@ -570,9 +608,9 @@ class AutoRegressiveModel:
                     "validation locations must match the training locations "
                     f"{self._locations}, but got {self._validation_locations}"
                 )
-            self._validation_loader.dataset.set_transform(self._transform)
+            self._validation_loader.dataset.set_transform(transform)
         data_loader = SimpleDataLoader(data_set)
-        params_list = []
+        params_list: list[Any] = []
         for member in range(max(1, self.n_ensemble)):
             seed = self.seed_offset + member
             n_iter = self.n_iter
@@ -582,9 +620,8 @@ class AutoRegressiveModel:
                 probe = Trainer(
                     self.model,
                     self.n_iter,
-                    # Local change (see core/__init__.py): the probe's schedule is
-                    # sized by the full series, so the probe and the refit follow
-                    # the same schedule.
+                    # The probe's schedule is sized by the full series, so the
+                    # probe and the refit follow the same schedule.
                     learning_rate=self.learning_rate_for(len(data_set)),
                     validation_loader=validation_loader,
                     seed=seed,
@@ -629,7 +666,7 @@ class AutoRegressiveModel:
         self._params = params_list[0]
         return FlaxPredictor(
             params_list,
-            self._transform,
+            transform,
             self.architecture,
             self.prediction_length,
             self.context_length,
@@ -665,15 +702,17 @@ class AutoRegressiveModel:
             column per draw.
         """
         _check_predict_inputs(historic, future, self.prediction_length, self.context_length, self._locations)
-        x, _ = get_series(future)
-        prev_values, prev_y = get_series(historic)
+        x, _ = get_series(future, self.covariates)
+        prev_values, prev_y = get_series(historic, self.covariates)
         prev_values = prev_values[:, -self.context_length :]
         prev_y = prev_y[:, -self.context_length :]
         full_x = jnp.concatenate([prev_values, x], axis=1)
         dataset = DLDataSet(full_x, prev_y, forecast_length=self.prediction_length, context_length=self.context_length)
+        if self._transform is None:
+            raise ValueError("the model has not been trained; call train first")
         dataset.set_transform(self._transform)
-        x, y = dataset.prediction_instance()
-        eta = self.model.apply(self._params, x, y)
+        window_x, window_y = dataset.prediction_instance()
+        eta = _apply_network(self.model, self._params, window_x, window_y)
         n_prev = prev_values.shape[1]
         samples = self.get_samples(eta[:, n_prev - 1 :], num_samples)
         return _forecast_frame(future, samples)
@@ -702,7 +741,7 @@ class AutoRegressiveModel:
         L = self.loss_func(y_pred, y_true)
         return jnp.mean(L) + jnp.mean(L[:, -self.prediction_length :])
 
-    def get_samples(self, eta: Any, n_samples: int) -> Any:
+    def get_samples(self, eta: jax.Array, n_samples: int) -> NDArray[Any]:
         """Draw samples from the output distribution for each period.
 
         Args:
