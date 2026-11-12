@@ -75,6 +75,16 @@ real defaults. The cost is that users see `0` rather than a number. Alternatives
 
 This needs a decision before the config is finalised.
 
+## Known issues
+
+**One-period forecasts crash with recursive decoding.** With `recursive_decode: true`, a
+prediction for a single future period fails with `ValueError: Need at least one array to stack`
+(`core/rnn_model.py:226`). The decoder loop gets an empty sequence, so `jnp.stack(etas)` has
+nothing to stack. The service advertises one-period forecasts (`min_prediction_periods` 1), so
+this is reachable from Chap. The bug comes from the v2 models, not from the merge, and it is
+not fixed yet. Fixing it means handling the empty decoder sequence and adding a regression test.
+Until then, leave `recursive_decode` off (the default) or request two or more periods.
+
 ## Layout
 
 ```
