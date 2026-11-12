@@ -131,9 +131,11 @@ With the same options and data, the forecasts are identical to those of the two 
 replaces, [auto_regressive_weekly_v2](https://github.com/chap-models/auto_regressive_weekly_v2)
 (with the weekly values above) and
 [auto_regressive_monthly_v2](https://github.com/chap-models/auto_regressive_monthly_v2) (with the
-defaults), with one exception: with `lr_schedule: warmup_cosine` the weekly forecasts differ by
-up to one case in some samples, because jax 0.12 rounds the schedule's cosine differently from the
-jax 0.10 the reference models pin. `tools/compare_reference.py` runs a reference repo's own scripts in its locked
+defaults), with one exception: with `lr_schedule: warmup_cosine` the weekly forecasts differ on
+some processors, because jax 0.12 computes that schedule with different rounding from the jax 0.10
+the reference models pin. On Linux arm64 they are identical; on macOS arm64 samples differ by up
+to one case; on Linux x86_64 the forecast means move by a median of 3.4% (at most 12%) in the
+30-epoch CI comparison. `tools/compare_reference.py` runs a reference repo's own scripts in its locked
 environment and this model's modules on the same data, and requires identical prediction CSVs;
 `tools/api_compare.py` does the same through the service API. CI runs `make compare`.
 
