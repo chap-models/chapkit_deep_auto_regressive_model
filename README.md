@@ -150,8 +150,25 @@ and every `--full` run must match exactly.
 
 The tolerance has two limits. The shift depends on the processor running the check, and one
 emulated x86_64 run reached a median of 13%, close to the bound, so the check can fail on some CI
-runners. And because the bound is near the seed-to-seed shift, it would not catch a small real
-regression in these two cases.
+runners. The 10th percentile has the least room: on GitHub CI it moved by up to 25% in one forecast,
+against the 30% bound. And because the bound is near the seed-to-seed shift, it would not catch a
+small real regression in these two cases.
+
+### Rolling back the dependency upgrade
+
+The upgrade to jax 0.12
+([#2](https://github.com/chap-models/chapkit_deep_auto_regressive_model/pull/2)) is the only
+reason the reference check needs a tolerance. To go back to exact parity with the reference
+models:
+
+1. Revert the commits of #2 on a branch (`git revert` of each, newest first) and open a pull
+   request. That restores jax/jaxlib 0.10.1, flax 0.12.7, optax 0.2.8, numpy 2.4.6, pandas 3.0.3
+   and scipy 1.17.1 in `pyproject.toml` and `uv.lock`, the previous `chapkit-py` digest, and the
+   exact reference check.
+2. Until that is merged, run the image built before the upgrade: the Docker workflow tags every
+   build of `main` as `sha-<short commit>`, so
+   `ghcr.io/chap-models/chapkit_deep_auto_regressive_model:sha-e1f765f` is the last one on jax
+   0.10.1.
 
 ```bash
 make compare       # fast epochs (REF_WEEKLY / REF_MONTHLY point at the reference checkouts)
