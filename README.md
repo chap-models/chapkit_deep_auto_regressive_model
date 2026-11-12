@@ -11,8 +11,16 @@ It merges two models into one that handles **both weekly and monthly data**:
 
 The shared model code, [chap_auto_regressive](https://github.com/chap-models/chap_auto_regressive),
 is vendored in as `chapkit_auto_regressive.core` (from commit `c4d1d5c`). It is unchanged apart
-from the package name and one addition: ISO-week periods (`2020W05`, `2020-W05`) parse, so the
-model also accepts the week format chapkit uses. The v2 models only read `start/end` ranges.
+from the package name and three local changes:
+
+- ISO-week periods (`2020W05`, `2020-W05`) parse, so the model also accepts the week format
+  chapkit uses. The v2 models only read `start/end` ranges.
+- Each location's periods are ordered by start date rather than as text, so ISO weeks such as
+  `2020W2` and `2020W10`, or the two ISO forms mixed, stay in calendar order. For `YYYY-MM` and
+  `start/end` the order is the same as before.
+- With `lr_schedule: warmup_cosine` and `early_stopping: true` together, the early-stopping
+  probe's schedule is sized by the full series, as in the weekly v2 model. The library upstream
+  sizes it by the probe's own windows, which changes forecasts.
 
 Given the same options and data, the forecasts are identical to the two v2 models'
 (see [Parity with the v2 models](#parity-with-the-v2-models)).
@@ -134,7 +142,8 @@ make test-api      # through the Docker image's API
 
 Cases cover the defaults, single and multi-member ensembles, an additional covariate,
 architecture variants (simple cell, stacked layers, recursive decoding), regularisation, the
-`warmup_cosine` schedule (weekly) and short-history context clamping (weekly). CI runs
+`warmup_cosine` schedule with and without early stopping (weekly) and short-history context
+clamping (weekly). CI runs
 `make compare` against both v2 repos' `main`.
 
 Identical output depends on the numerical stack. `uv.lock` pins the same versions the v2 models
@@ -145,9 +154,6 @@ Differences from the v2 models that do not affect matching runs:
 
 - The library classes moved package (`chap_auto_regressive` to `chapkit_auto_regressive.core`),
   and saved models pickle the scaler's class path, so v2 model files do not load here. Retrain.
-- With `lr_schedule: warmup_cosine` **and** `early_stopping: true` together, the vendored
-  library sizes the probe's schedule by the probe's own windows. The weekly v2 model's subclass
-  sized it by the full series. All other combinations are unchanged.
 - The weekly v2 `scripts/export_weights.py` (export for the Rust inference port) and
   `scripts/verify_eval.py` are not carried over.
 

@@ -35,6 +35,12 @@ CASES: dict[str, list[tuple[str, list[str], dict[str, Any], str]]] = {
         ("additional-covariate", ["relative_humidity"], {"n_ensemble": 2}, "all"),
         ("simple-cell-2-layers", [], {"n_ensemble": 1, "cell": "simple", "rnn_layers": 2}, "all"),
         ("warmup-cosine", [], {"n_ensemble": 1, "lr_schedule": "warmup_cosine", "warmup_epochs": 2}, "all"),
+        (
+            "warmup-cosine-early-stopping",
+            [],
+            {"n_ensemble": 1, "lr_schedule": "warmup_cosine", "early_stopping": True},
+            "all",
+        ),
         ("short-history-clamp", [], {"n_ensemble": 1}, "last40"),
     ],
     "month": [

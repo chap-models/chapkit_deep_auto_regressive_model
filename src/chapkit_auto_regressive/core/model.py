@@ -407,11 +407,9 @@ class AutoRegressiveModel:
     def learning_rate_for(self, steps_per_epoch: int) -> float | optax.Schedule:
         """Return the Adam learning rate for a loader: a constant or a per-step schedule.
 
-        The schedule spans ``n_iter`` epochs of that loader, so its shape is the
-        same in epochs whichever loader it drives. An early-stopping probe and its
-        refit therefore follow the same trajectory, and with
-        ``refit_scaling="epochs"`` the refit stops at the point in the schedule
-        where the probe found its best epoch.
+        The schedule spans ``n_iter`` epochs of ``steps_per_epoch`` steps. Both
+        an early-stopping probe and its refit get the schedule sized by the full
+        series (local change, see ``core/__init__.py``), as in the weekly v2 model.
 
         Args:
             steps_per_epoch: Optimizer steps per epoch (one per training window).
@@ -584,7 +582,10 @@ class AutoRegressiveModel:
                 probe = Trainer(
                     self.model,
                     self.n_iter,
-                    learning_rate=self.learning_rate_for(len(fit_loader.dataset)),
+                    # Local change (see core/__init__.py): the probe's schedule is
+                    # sized by the full series, as in the weekly v2 model, so runs
+                    # with a schedule and early stopping keep their v2 forecasts.
+                    learning_rate=self.learning_rate_for(len(data_set)),
                     validation_loader=validation_loader,
                     seed=seed,
                     eval_every=self.eval_every,

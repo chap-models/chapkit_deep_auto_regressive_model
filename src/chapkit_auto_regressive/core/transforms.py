@@ -83,9 +83,10 @@ def location_groups(data: pd.DataFrame) -> Iterator[tuple[Any, pd.DataFrame]]:
     Locations are yielded in sorted (canonical) label order so that a location
     maps to the same embedding index regardless of the input row order — this
     keeps ``train`` and ``predict`` aligned and matches the legacy model's
-    ``DataSet`` ordering. Within each location the rows are sorted by
-    ``time_period`` (lexicographic order is chronological for both the monthly
-    ``YYYY-MM`` and the weekly ``start/end`` formats).
+    ``DataSet`` ordering. Within each location the rows are sorted by the start
+    date of their ``time_period`` (local change, see ``core/__init__.py``: text
+    order is chronological for ``YYYY-MM`` and ``start/end``, but not for ISO
+    weeks such as ``2020W2`` / ``2020W10`` or mixed ``2020W01`` / ``2020-W02``).
 
     Args:
         data: The input frame with a ``location`` and ``time_period`` column.
@@ -94,7 +95,8 @@ def location_groups(data: pd.DataFrame) -> Iterator[tuple[Any, pd.DataFrame]]:
         ``(location, sub_frame)`` pairs.
     """
     for location, sub in data.groupby("location", sort=True):
-        yield location, sub.sort_values("time_period")
+        starts = [period_start_date(period) for period in sub["time_period"]]
+        yield location, sub.iloc[np.argsort(starts, kind="stable")]
 
 
 def get_series(data: pd.DataFrame, covariates: Sequence[str] = REQUIRED_COVARIATES) -> tuple[np.ndarray, np.ndarray]:

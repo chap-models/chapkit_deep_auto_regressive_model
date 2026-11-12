@@ -98,3 +98,36 @@ def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged():
     assert period_start_date("2020-W53") == datetime(2020, 12, 28)
     assert period_start_date("2010-03") == datetime(2010, 3, 1)
     assert period_start_date("2019-10-14/2019-10-20") == datetime(2019, 10, 14)
+
+
+@pytest.mark.parametrize(
+    "periods",
+    [
+        ["2020W10", "2020W1", "2020W2", "2020W9"],  # unpadded: text order is 1, 10, 2, 9
+        ["2020-W03", "2020W01", "2020-W02", "2020W04"],  # mixed ISO forms
+        ["2020-W53", "2021W01", "2020W52"],  # across a year boundary
+    ],
+)
+def test_iso_weeks_are_ordered_by_date_not_text(periods):
+    import pandas as pd
+
+    from chapkit_auto_regressive.core.transforms import location_groups, period_start_date
+
+    frame = pd.DataFrame({"location": "a", "time_period": periods})
+    ((_, rows),) = list(location_groups(frame))
+    starts = [period_start_date(p) for p in rows["time_period"]]
+    assert starts == sorted(starts)
+
+
+def test_monthly_and_range_order_is_unchanged():
+    import pandas as pd
+
+    from chapkit_auto_regressive.core.transforms import location_groups
+
+    for periods in (
+        ["2020-03", "2019-12", "2020-01", "2020-02"],
+        ["2019-10-21/2019-10-27", "2019-10-07/2019-10-13", "2019-10-14/2019-10-20"],
+    ):
+        frame = pd.DataFrame({"location": "a", "time_period": periods})
+        ((_, rows),) = list(location_groups(frame))
+        assert rows["time_period"].tolist() == sorted(periods)
