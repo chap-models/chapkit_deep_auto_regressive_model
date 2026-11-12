@@ -1,0 +1,51 @@
+[project]
+name = "chapkit-auto-regressive"
+version = "0.1.0"
+description = "Chapkit service for the deep auto-regressive (RNN, flax/jax) Chap model, weekly and monthly"
+readme = "README.md"
+license = { text = "AGPLv3 license" }
+authors = [
+    { name = "Morten Hansen", email = "morten@winterop.com" }
+]
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "chapkit>=2.5.0,<3",
+    # Vendored chap_auto_regressive library (src/chapkit_auto_regressive/core/).
+    "flax>=0.10.2",
+    "jax>=0.4.34",
+    "optax>=0.2.4",
+    "scipy>=1.11",
+    "numpy>=2.1",
+    "pandas>=2.1",
+    "more-itertools>=10.0",
+    # The train module reads the Chap model-configuration YAML.
+    "pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15",
+    "pytest>=8.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx2>=2.16",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+fixable = ["ALL"]
+select = ["E", "W", "F", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

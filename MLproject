@@ -1,0 +1,145 @@
+# Generated from main.py by `chapkit mlproject export` -- do not edit by hand.
+# Regenerate with `chapkit mlproject export main.py`; add --check to fail when it is stale.
+
+name: chapkit_auto_regressive
+version: 0.1.0
+target: disease_cases
+supported_period_type: any
+required_covariates:
+- rainfall
+- mean_temperature
+- population
+allow_free_additional_continuous_covariates: true
+requires_geo: false
+min_prediction_periods: 1
+max_prediction_periods: 12
+meta_data:
+  display_name: Deep Auto Regressive v2 (chapkit)
+  description: 'An experimental deep learning model based on an RNN architecture, focusing on predictions
+    based on auto-regressive time series data. Supports weekly and monthly data: the period type is read
+    from the data and picks the context, horizon and training defaults. Merges the Weekly and Monthly
+    Deep Auto Regressive v2 models.'
+  author: Knut Rand
+  author_assessed_status: red
+  contact_email: knut.rand@dhis2.org
+  organization: HISP Centre, University of Oslo
+  organization_logo_url: https://landportal.org/sites/default/files/2024-03/university_of_oslo_logo.png
+  citation_info: Rand, Knut. 2025. "Deep Auto Regressive model". HISP Centre, University of Oslo. https://dhis2-chap.github.io/chap-core/external_models/overview_of_supported_models.html
+user_options:
+  context_length:
+    type: integer
+    minimum: 0
+    default: 0
+    description: 'Periods of history read as context. 0 uses the period default: 52 weeks or 36 months.'
+  prediction_length:
+    type: integer
+    minimum: 0
+    default: 0
+    description: Forecast horizon the model is trained for, which caps how far it can predict. 0 uses
+      the period default (12 weeks or 3 months), raised to the requested prediction_periods when that
+      is longer.
+  learning_rate:
+    type: number
+    minimum: 0.0
+    default: 0.0
+    description: 'Adam learning rate (with a schedule, its start and end rate). 0 uses the period default:
+      1e-5 for weekly data, 1e-3 for monthly.'
+  n_iter:
+    type: integer
+    minimum: 0
+    default: 0
+    description: 'Training epochs per ensemble member. 0 uses the period default: 1000 weekly, 400 monthly.'
+  n_ensemble:
+    type: integer
+    default: 5
+    description: Deep-ensemble members (seed-varied; pooled at predict time).
+  seed_offset:
+    type: integer
+    default: 0
+    description: Offset added to every ensemble member's seed (for repeat runs).
+  lr_schedule:
+    type: string
+    enum:
+    - constant
+    - warmup_cosine
+    default: constant
+    description: Learning-rate schedule. 'warmup_cosine' warms up to peak_learning_rate, then cosine-decays
+      to learning_rate over n_iter.
+  peak_learning_rate:
+    type: number
+    default: 0.001
+    description: Peak learning rate of the warmup_cosine schedule.
+  warmup_epochs:
+    type: integer
+    default: 5
+    description: Linear warmup epochs of the warmup_cosine schedule.
+  early_stopping:
+    type: boolean
+    default: false
+    description: Stop each member at its best validation epoch, then refit on all data (needs a long series;
+      see validation_periods).
+  validation_periods:
+    type: integer
+    default: 12
+    description: Trailing periods held out to pick the stopping epoch.
+  min_probe_windows:
+    type: integer
+    default: 5
+    description: Training windows the early-stopping probe needs before the held-out block.
+  refit_scaling:
+    type: string
+    enum:
+    - epochs
+    - steps
+    default: epochs
+    description: How the probe's stopping point carries over to the full refit.
+  patience:
+    type: integer
+    default: 6
+    description: Evaluations without improvement before stopping.
+  eval_every:
+    type: integer
+    default: 5
+    description: Epochs between validation evaluations.
+  cell:
+    type: string
+    enum:
+    - gru
+    - simple
+    default: gru
+    description: Recurrent cell type.
+  rnn_features:
+    type: integer
+    default: 16
+    description: Hidden width of the encoder/decoder cells.
+  head_features:
+    type: integer
+    default: 24
+    description: Hidden width of the output head.
+  rnn_layers:
+    type: integer
+    default: 1
+    description: Number of stacked encoder/decoder RNN layers.
+  recursive_decode:
+    type: boolean
+    default: false
+    description: Feed each forecast step's predicted mean back as the next step's input.
+  dropout_rate:
+    type: number
+    default: 0.2
+    description: Dropout probability in the preprocess stage.
+  input_dropout_rate:
+    type: number
+    default: 0.0
+    description: Feature-dropout probability on the input covariates.
+entry_points:
+  train:
+    parameters:
+      train_data: path
+    command: python -m chapkit_auto_regressive.train {train_data} model --config config.yml
+  predict:
+    parameters:
+      historic_data: path
+      future_data: path
+      out_file: path
+    command: python -m chapkit_auto_regressive.predict model {historic_data} {future_data} {out_file}

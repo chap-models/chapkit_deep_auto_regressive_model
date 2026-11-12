@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Sync dependencies
+        run: uv sync --all-groups
+      - name: Lint (ruff + MLproject up to date)
+        run: make lint
+      - name: Tests (unit, library, train/predict pipeline)
+        run: make test
+      - name: Build package
+        run: make build-package
+
+  # The merged model must forecast exactly like the two models it replaces.
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check out the v2 models
+        run: |
+          git clone --depth 1 https://github.com/chap-models/auto_regressive_weekly_v2.git ../auto_regressive_weekly_v2
+          git clone --depth 1 https://github.com/chap-models/auto_regressive_monthly_v2.git ../auto_regressive_monthly_v2
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Sync dependencies
+        run: uv sync --all-groups
+      - name: Compare forecasts with the v2 models
+        run: make compare
+
+  docker-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Sync dependencies
+        run: uv sync --all-groups
+      - name: chapkit contract test against the image
+        run: make test-contract
+      - name: chapkit contract test against chapkit mlproject run
+        run: |
+          git clone --depth 1 https://github.com/chap-models/auto_regressive_monthly_v2.git ../auto_regressive_monthly_v2
+          make test-mlproject

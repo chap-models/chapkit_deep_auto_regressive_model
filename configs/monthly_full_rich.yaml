@@ -1,0 +1,7 @@
+# full_rich: tuned configuration that beats the MSTL champion on every eval window
+# (full dataset log-CRPS 0.3184 vs 0.3254; active-spray 0.3330 vs 0.3596).
+# 22 covariates (climate + failed_total resistance + champion IRS timing + riskmap
+# statics + geojson spatial) with regularization to prevent overfitting + 5-member ensemble.
+# Build the feature CSV with scripts/data_prep/. See README.md.
+additional_continuous_covariates: [relative_humidity, failed_total, irs_level, irs_since, irs_cumulative, irs_decay2, irs_decay8, irs_recent3, irs_recent6, irs_recent12, irs_rounds12, sig_temp, focal_habitat, focal_builtup, env3d_risk_oof, centroid_lon, centroid_lat, nbr_rainfall, nbr_mean_temperature, nbr_relative_humidity]
+user_option_values: {n_ensemble: 5, context_length: 36, n_iter: 300, cell: gru, rnn_features: 16, head_features: 24, dropout_rate: 0.3, input_dropout_rate: 0.25}
