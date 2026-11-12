@@ -149,7 +149,15 @@ def compare(period: str, reference: Path, full: bool, only: list[str] | None) ->
         identical = same_keys and old.equals(new)
         ok &= identical
         status = "IDENTICAL" if identical else "DIFFERENT"
-        print(f"[{period}] {name:<24} {status}  rows={len(new)} samples={len(samples)} max|diff|={max_diff:.3g}")
+        line = f"[{period}] {name:<24} {status}  rows={len(new)} samples={len(samples)} max|diff|={max_diff:.3g}"
+        if same_keys and not identical:
+            # One sampled draw can move far on a tiny change in the fitted
+            # distribution, so also report how far each row's forecast mean moved.
+            old_mean = old[samples].to_numpy().mean(axis=1)
+            new_mean = new[samples].to_numpy().mean(axis=1)
+            shift = np.abs(new_mean - old_mean) / np.maximum(np.abs(old_mean), 1.0)
+            line += f" mean shift: median {np.median(shift):.1%}, max {shift.max():.1%}"
+        print(line)
         sys.stdout.flush()
     return ok
 
