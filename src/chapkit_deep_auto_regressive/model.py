@@ -13,7 +13,7 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
-from chapkit_auto_regressive.core import AutoRegressiveModel
+from chapkit_deep_auto_regressive.core import AutoRegressiveModel
 
 logger = logging.getLogger(__name__)
 

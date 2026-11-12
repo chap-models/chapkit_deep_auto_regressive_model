@@ -1,8 +1,8 @@
 .PHONY: help install lint mlproject test build-package compare compare-full build run run-ghcr serve-test test-contract test-api test-mlproject stop-test clean
 
-IMAGE      ?= chapkit-auto-regressive:latest
-GHCR_IMAGE ?= ghcr.io/chap-models/chapkit_auto_regressive:latest
-TEST_NAME  ?= chapkit-auto-regressive-test
+IMAGE      ?= chapkit-deep-auto-regressive:latest
+GHCR_IMAGE ?= ghcr.io/chap-models/chapkit_deep_auto_regressive_model:latest
+TEST_NAME  ?= chapkit-deep-auto-regressive-test
 TEST_PORT  ?= 8131
 TEST_URL   ?= http://localhost:$(TEST_PORT)
 # Fast epoch count for the service tests; the code path is the same at any count.
@@ -70,10 +70,10 @@ build:
 	@docker build --build-arg GIT_REVISION=$(shell git rev-parse HEAD 2>/dev/null) -t $(IMAGE) .
 
 run: build
-	@docker run --rm -p 8000:8000 --name chapkit-auto-regressive $(IMAGE)
+	@docker run --rm -p 8000:8000 --name chapkit-deep-auto-regressive $(IMAGE)
 
 run-ghcr:
-	@docker run --rm --pull always -p 8000:8000 --name chapkit-auto-regressive $(GHCR_IMAGE)
+	@docker run --rm --pull always -p 8000:8000 --name chapkit-deep-auto-regressive $(GHCR_IMAGE)
 
 # Detached service (with the fast epoch count) that the API-level targets run against.
 serve-test: build

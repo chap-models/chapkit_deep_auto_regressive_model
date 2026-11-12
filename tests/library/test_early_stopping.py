@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from chapkit_auto_regressive.core import AutoRegressiveModel
-from chapkit_auto_regressive.core.trainer import Trainer
+from chapkit_deep_auto_regressive.core import AutoRegressiveModel
+from chapkit_deep_auto_regressive.core.trainer import Trainer
 
 
 def _frame(n_periods: int, n_locations: int = 3, seed: int = 0) -> pd.DataFrame:
@@ -136,7 +136,7 @@ def test_refit_budget_is_computed_in_steps_under_both_scalings():
     refit enforces is expressed in steps, so it never depends on which loader it
     happens to be iterating.
     """
-    import chapkit_auto_regressive.core.model as model_module
+    import chapkit_deep_auto_regressive.core.model as model_module
 
     def run(scaling):
         model = _model(refit_scaling=scaling)

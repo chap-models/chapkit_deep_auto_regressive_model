@@ -3,9 +3,9 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from chapkit_auto_regressive.core.data_loader import DataSet, SimpleDataLoader
-from chapkit_auto_regressive.core.rnn_model import build_network, model_makers
-from chapkit_auto_regressive.core.trainer import Trainer
+from chapkit_deep_auto_regressive.core.data_loader import DataSet, SimpleDataLoader
+from chapkit_deep_auto_regressive.core.rnn_model import build_network, model_makers
+from chapkit_deep_auto_regressive.core.trainer import Trainer
 
 
 def _param_count(params) -> int:

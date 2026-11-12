@@ -1,4 +1,4 @@
-# chapkit_auto_regressive
+# chapkit_deep_auto_regressive_model
 
 Deep Auto Regressive model for Chap, as a [chapkit](https://github.com/dhis2-chap/chapkit)
 service. An experimental deep learning model based on an RNN architecture (flax/jax), focusing
@@ -10,7 +10,7 @@ It merges two models into one that handles **both weekly and monthly data**:
 - [auto_regressive_monthly_v2](https://github.com/chap-models/auto_regressive_monthly_v2)
 
 The shared model code, [chap_auto_regressive](https://github.com/chap-models/chap_auto_regressive),
-is vendored in as `chapkit_auto_regressive.core` (from commit `c4d1d5c`). It is unchanged apart
+is vendored in as `chapkit_deep_auto_regressive.core` (from commit `c4d1d5c`). It is unchanged apart
 from the package name and three local changes:
 
 - ISO-week periods (`2020W05`, `2020-W05`) parse, so the model also accepts the week format
@@ -45,7 +45,7 @@ Four options had different defaults in the two v2 models:
 - **Monthly runs** with the defaults give the same forecasts as `auto_regressive_monthly_v2`.
 - **Weekly runs** give the same forecasts as `auto_regressive_weekly_v2` only when they set the
   weekly v2 values. [`configs/weekly_example.yaml`](configs/weekly_example.yaml) does, and
-  `chapkit_auto_regressive.model.WEEKLY_V2_OPTIONS` holds them. With the defaults, a weekly
+  `chapkit_deep_auto_regressive.model.WEEKLY_V2_OPTIONS` holds them. With the defaults, a weekly
   run reads 36 weeks of context and trains at 1e-3 for 400 epochs, so its forecasts differ from
   the weekly v2 model's.
 
@@ -76,11 +76,11 @@ Until then, leave `recursive_decode` off (the default) or request two or more pe
 ## Layout
 
 ```
-src/chapkit_auto_regressive/
+src/chapkit_deep_auto_regressive/
   core/        vendored chap_auto_regressive library (network, trainer, data loading)
   model.py     period detection and period-aware model building
-  train.py     train entry point:   python -m chapkit_auto_regressive.train <data> <model> --config <yml>
-  predict.py   predict entry point: python -m chapkit_auto_regressive.predict <model> <historic> <future> <out>
+  train.py     train entry point:   python -m chapkit_deep_auto_regressive.train <data> <model> --config <yml>
+  predict.py   predict entry point: python -m chapkit_deep_auto_regressive.predict <model> <historic> <future> <out>
   service.py   the chapkit service: config schema, ShellModelRunner, service info
 main.py        re-exports the service at the root (uvicorn main:app, MLproject export)
 MLproject      generated from main.py by `chapkit mlproject export` -- do not edit by hand
@@ -159,7 +159,7 @@ Differences from the v2 models that do not affect matching runs:
 - Weekly runs that leave the four options above on their defaults get the monthly v2 values, not
   the weekly v2 ones.
 
-- The library classes moved package (`chap_auto_regressive` to `chapkit_auto_regressive.core`),
+- The library classes moved package (`chap_auto_regressive` to `chapkit_deep_auto_regressive.core`),
   and saved models pickle the scaler's class path, so v2 model files do not load here. Retrain.
 - The weekly v2 `scripts/export_weights.py` (export for the Rust inference port) and
   `scripts/verify_eval.py` are not carried over.

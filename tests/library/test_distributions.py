@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from chapkit_auto_regressive.core.distributions import NegativeBinomial3, Normal, Poisson, nb_head
+from chapkit_deep_auto_regressive.core.distributions import NegativeBinomial3, Normal, Poisson, nb_head
 
 
 def test_nb3_sampling_is_reproducible_from_key():

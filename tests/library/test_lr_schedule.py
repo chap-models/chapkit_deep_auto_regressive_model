@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from chapkit_auto_regressive.core import AutoRegressiveModel
+from chapkit_deep_auto_regressive.core import AutoRegressiveModel
 
 
 def _frame(n_periods: int, n_locations: int = 3, seed: int = 0) -> pd.DataFrame:

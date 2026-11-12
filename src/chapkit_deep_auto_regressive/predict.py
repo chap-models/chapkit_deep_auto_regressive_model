@@ -1,4 +1,6 @@
-"""Predict entry point: ``python -m chapkit_auto_regressive.predict <model> <historic.csv> <future.csv> <out.csv>``.
+"""Predict entry point.
+
+Usage: ``python -m chapkit_deep_auto_regressive.predict <model> <historic.csv> <future.csv> <out.csv>``.
 
 The trained model file carries the architecture, window lengths and covariates,
 so predict needs no configuration and works the same for weekly and monthly data.
@@ -9,7 +11,7 @@ import logging
 
 import pandas as pd
 
-from chapkit_auto_regressive.core.model import FlaxPredictor
+from chapkit_deep_auto_regressive.core.model import FlaxPredictor
 
 logging.basicConfig(level=logging.INFO)
 

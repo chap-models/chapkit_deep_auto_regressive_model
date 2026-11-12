@@ -255,7 +255,7 @@ wheels = [
 ]
 
 [[package]]
-name = "chapkit-auto-regressive"
+name = "chapkit-deep-auto-regressive"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

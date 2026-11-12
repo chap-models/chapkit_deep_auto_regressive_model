@@ -5,9 +5,9 @@ location and time period and the columns ``location``, ``time_period``,
 ``rainfall``, ``mean_temperature``, ``population`` and (for training) the target
 ``disease_cases``.
 
-- [`get_series`][chapkit_auto_regressive.core.transforms.get_series] turns that frame into the dense
+- [`get_series`][chapkit_deep_auto_regressive.core.transforms.get_series] turns that frame into the dense
   ``(features, target)`` arrays the network consumes.
-- [`ZScaler`][chapkit_auto_regressive.core.transforms.ZScaler] standardizes those features so that no
+- [`ZScaler`][chapkit_deep_auto_regressive.core.transforms.ZScaler] standardizes those features so that no
   single covariate dominates training.
 """
 
@@ -60,7 +60,7 @@ class ZScaler:
         """Fit a scaler from a dataset's feature statistics.
 
         Args:
-            data_set: A [`DataSet`][chapkit_auto_regressive.core.data_loader.DataSet] whose
+            data_set: A [`DataSet`][chapkit_deep_auto_regressive.core.data_loader.DataSet] whose
                 ``predictors(0)`` array provides the features.
 
         Returns:

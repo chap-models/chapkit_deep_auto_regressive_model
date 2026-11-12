@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from chapkit_auto_regressive.model import WEEKLY_V2_OPTIONS
+from chapkit_deep_auto_regressive.model import WEEKLY_V2_OPTIONS
 
 #: Options every case starts from, per period type. The defaults are the monthly
 #: v2 model's, so weekly cases set the weekly v2 values, as a weekly run must to
@@ -84,11 +84,11 @@ def _run(repo: Path, workdir: Path, env: dict[str, str], tag: str) -> pd.DataFra
     """Train and predict with ``repo``'s entry points in its own uv environment.
 
     The v2 references run ``train.py``/``predict.py`` from their root; this repo
-    runs the ``chapkit_auto_regressive.train``/``.predict`` modules.
+    runs the ``chapkit_deep_auto_regressive.train``/``.predict`` modules.
     """
     uv = ["uv", "run", "--frozen", "--project", str(repo), "python"]
     train, predict = (
-        (["-m", "chapkit_auto_regressive.train"], ["-m", "chapkit_auto_regressive.predict"])
+        (["-m", "chapkit_deep_auto_regressive.train"], ["-m", "chapkit_deep_auto_regressive.predict"])
         if repo == REPO
         else (["train.py"], ["predict.py"])
     )

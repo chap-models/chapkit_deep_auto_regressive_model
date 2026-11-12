@@ -2,7 +2,7 @@
 
 The model is trained on fixed-length windows of ``context_length + forecast_length``
 periods sliced out of each location's series. The classes here turn the dense
-``(features, target)`` arrays from [`transforms`][chapkit_auto_regressive.core.transforms] into those
+``(features, target)`` arrays from [`transforms`][chapkit_deep_auto_regressive.core.transforms] into those
 windows and iterate over them.
 
 Each window yields three arrays:
@@ -64,9 +64,9 @@ class DataSet:
     """A windowed view over one set of location series.
 
     Indexing returns a single training window; iterating a
-    [`SimpleDataLoader`][chapkit_auto_regressive.core.data_loader.SimpleDataLoader] over the dataset
+    [`SimpleDataLoader`][chapkit_deep_auto_regressive.core.data_loader.SimpleDataLoader] over the dataset
     walks every window. A feature transform (typically a
-    [`ZScaler`][chapkit_auto_regressive.core.transforms.ZScaler]) can be attached and is applied lazily
+    [`ZScaler`][chapkit_deep_auto_regressive.core.transforms.ZScaler]) can be attached and is applied lazily
     as windows are produced.
     """
 
@@ -93,7 +93,7 @@ class DataSet:
 
         Args:
             transform: A callable mapping a ``(features, ar_target)`` tuple to a
-                transformed tuple, e.g. a [`ZScaler`][chapkit_auto_regressive.core.transforms.ZScaler].
+                transformed tuple, e.g. a [`ZScaler`][chapkit_deep_auto_regressive.core.transforms.ZScaler].
         """
         self._transform = transform
 
@@ -144,7 +144,7 @@ class DataSet:
 
 
 class SimpleDataLoader:
-    """Iterates over every window of a [`DataSet`][chapkit_auto_regressive.core.data_loader.DataSet] in order."""
+    """Iterates over every window of a [`DataSet`][chapkit_deep_auto_regressive.core.data_loader.DataSet] in order."""
 
     def __init__(self, dataset: DataSet):
         """Wrap a dataset for iteration.
@@ -163,7 +163,7 @@ class SimpleDataLoader:
 class DataLoader:
     """Iterates over windows with an optional held-out validation block.
 
-    Unlike [`SimpleDataLoader`][chapkit_auto_regressive.core.data_loader.SimpleDataLoader], this loader
+    Unlike [`SimpleDataLoader`][chapkit_deep_auto_regressive.core.data_loader.SimpleDataLoader], this loader
     can carve a contiguous validation region out of the middle of the series and
     mask the overlapping windows out of training, so the same series provides both
     training and validation windows.

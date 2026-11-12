@@ -2,7 +2,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from chapkit_auto_regressive.core.transforms import ZScaler, get_series, period_start_date, year_position_from_period
+from chapkit_deep_auto_regressive.core.transforms import (
+    ZScaler,
+    get_series,
+    period_start_date,
+    year_position_from_period,
+)
 
 
 def _rows(location, periods):

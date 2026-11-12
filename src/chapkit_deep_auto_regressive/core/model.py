@@ -1,10 +1,10 @@
 """The public model and its trained predictor.
 
-[`AutoRegressiveModel`][chapkit_auto_regressive.core.model.AutoRegressiveModel] is the estimator CHAP
+[`AutoRegressiveModel`][chapkit_deep_auto_regressive.core.model.AutoRegressiveModel] is the estimator CHAP
 trains; its ``train`` method returns a
-[`FlaxPredictor`][chapkit_auto_regressive.core.model.FlaxPredictor] that produces probabilistic
+[`FlaxPredictor`][chapkit_deep_auto_regressive.core.model.FlaxPredictor] that produces probabilistic
 forecasts. Both share the same output head — the network emits two channels per
-period (``eta``) which [`nb_head`][chapkit_auto_regressive.core.distributions.nb_head] turns into a
+period (``eta``) which [`nb_head`][chapkit_deep_auto_regressive.core.distributions.nb_head] turns into a
 negative-binomial distribution that is then sampled.
 
 The public API speaks tidy :class:`pandas.DataFrame` objects (one row per location
@@ -89,7 +89,7 @@ def _forecast_frame(future: pd.DataFrame, samples: Any) -> pd.DataFrame:
         future: The future-covariate frame the forecast was made for.
         samples: Sampled counts with a leading location axis, each entry shaped
             ``(periods, n_samples)`` (aligned with
-            [`location_groups`][chapkit_auto_regressive.core.transforms.location_groups]).
+            [`location_groups`][chapkit_deep_auto_regressive.core.transforms.location_groups]).
 
     Returns:
         A long frame with columns ``time_period``, ``location`` and one
@@ -112,7 +112,7 @@ def _forecast_frame(future: pd.DataFrame, samples: Any) -> pd.DataFrame:
 class FlaxPredictor:
     """A trained model that turns history and future covariates into samples.
 
-    Produced by [`AutoRegressiveModel.train`][chapkit_auto_regressive.core.model.AutoRegressiveModel.train].
+    Produced by [`AutoRegressiveModel.train`][chapkit_deep_auto_regressive.core.model.AutoRegressiveModel.train].
     It holds the fitted network parameters and the feature scaler, and can be
     pickled to disk and reloaded.
 
@@ -259,11 +259,11 @@ class FlaxPredictor:
 class AutoRegressiveModel:
     """Deep auto-regressive forecaster for disease case counts.
 
-    The estimator wraps the [`ARModel2`][chapkit_auto_regressive.core.rnn_model.ARModel2] network: it
+    The estimator wraps the [`ARModel2`][chapkit_deep_auto_regressive.core.rnn_model.ARModel2] network: it
     extracts and scales features, slices each location's series into
     ``context_length + prediction_length`` windows, and fits the network by
     maximizing the negative-binomial likelihood of the observed cases. Calling
-    ``train`` returns a [`FlaxPredictor`][chapkit_auto_regressive.core.model.FlaxPredictor].
+    ``train`` returns a [`FlaxPredictor`][chapkit_deep_auto_regressive.core.model.FlaxPredictor].
 
     All input/output is via tidy :class:`pandas.DataFrame` objects with the columns
     ``location``, ``time_period``, ``rainfall``, ``mean_temperature``,
@@ -445,7 +445,7 @@ class AutoRegressiveModel:
         are the labels the validation loss is computed against.
 
         The fitted feature scaler is attached later, inside
-        [`train`][chapkit_auto_regressive.core.model.AutoRegressiveModel.train], so the
+        [`train`][chapkit_deep_auto_regressive.core.model.AutoRegressiveModel.train], so the
         validation features are standardized the same way as the training ones.
 
         Args:
@@ -544,7 +544,7 @@ class AutoRegressiveModel:
         """Fit the model and return a predictor.
 
         Extracts features, fits the feature scaler, builds the windowed loader,
-        and runs the [`Trainer`][chapkit_auto_regressive.core.trainer.Trainer] to minimize the negative
+        and runs the [`Trainer`][chapkit_deep_auto_regressive.core.trainer.Trainer] to minimize the negative
         log-likelihood.
 
         Args:
@@ -552,7 +552,7 @@ class AutoRegressiveModel:
                 ``disease_cases``.
 
         Returns:
-            A [`FlaxPredictor`][chapkit_auto_regressive.core.model.FlaxPredictor] holding the trained
+            A [`FlaxPredictor`][chapkit_deep_auto_regressive.core.model.FlaxPredictor] holding the trained
             parameters and the fitted scaler.
         """
         self._locations = sorted(data["location"].unique())
@@ -642,10 +642,10 @@ class AutoRegressiveModel:
 
         Args:
             path: Path to a file written by
-                [`FlaxPredictor.save`][chapkit_auto_regressive.core.model.FlaxPredictor.save].
+                [`FlaxPredictor.save`][chapkit_deep_auto_regressive.core.model.FlaxPredictor.save].
 
         Returns:
-            The reconstructed [`FlaxPredictor`][chapkit_auto_regressive.core.model.FlaxPredictor].
+            The reconstructed [`FlaxPredictor`][chapkit_deep_auto_regressive.core.model.FlaxPredictor].
         """
         return FlaxPredictor.load(path)
 

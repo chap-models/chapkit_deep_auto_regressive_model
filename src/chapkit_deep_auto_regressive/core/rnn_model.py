@@ -1,10 +1,10 @@
 """The recurrent network architecture.
 
 The model that the auto-regressive estimator trains is
-[`ARModel2`][chapkit_auto_regressive.core.rnn_model.ARModel2], assembled by the
-[`model_makers`][chapkit_auto_regressive.core.rnn_model.model_makers] factories. It processes a window
-in four steps: a per-location [`Preprocess`][chapkit_auto_regressive.core.rnn_model.Preprocess] stage,
-an auto-regressive join ([`ARAdder`][chapkit_auto_regressive.core.rnn_model.ARAdder]), and two stacked
+[`ARModel2`][chapkit_deep_auto_regressive.core.rnn_model.ARModel2], assembled by the
+[`model_makers`][chapkit_deep_auto_regressive.core.rnn_model.model_makers] factories. It processes a window
+in four steps: a per-location [`Preprocess`][chapkit_deep_auto_regressive.core.rnn_model.Preprocess] stage,
+an auto-regressive join ([`ARAdder`][chapkit_deep_auto_regressive.core.rnn_model.ARAdder]), and two stacked
 ``SimpleCell`` RNNs that encode the context and decode the forecast horizon.
 
 Array convention: ``batch x location x time x feature``.
@@ -112,7 +112,7 @@ class ARAdder(nn.Module):
 class MultiValueARAdder(nn.Module):
     """Auto-regressive join that also mixes targets across locations.
 
-    A variant of [`ARAdder`][chapkit_auto_regressive.core.rnn_model.ARAdder] that, in addition to each
+    A variant of [`ARAdder`][chapkit_deep_auto_regressive.core.rnn_model.ARAdder] that, in addition to each
     series' own past, passes the targets through a dense layer across locations so
     a region can borrow signal from the others.
     """
@@ -260,12 +260,12 @@ def build_network(
     dropout_rate: float = 0.2,
     input_dropout_rate: float = 0.0,
 ) -> ARModel2:
-    """Build an [`ARModel2`][chapkit_auto_regressive.core.rnn_model.ARModel2] from explicit hyperparameters.
+    """Build an [`ARModel2`][chapkit_deep_auto_regressive.core.rnn_model.ARModel2] from explicit hyperparameters.
 
     Args:
         n_locations: Number of locations (passed to the preprocess stage).
         cell: Recurrent cell type, a key of
-            [`CELL_TYPES`][chapkit_auto_regressive.core.rnn_model.CELL_TYPES] (``"gru"`` or ``"simple"``).
+            [`CELL_TYPES`][chapkit_deep_auto_regressive.core.rnn_model.CELL_TYPES] (``"gru"`` or ``"simple"``).
         rnn_features: Hidden width of the encoder and decoder cells.
         preprocess_hidden: Hidden width of the per-location preprocess stack.
         preprocess_output: Output width of the preprocess stage.

@@ -2,7 +2,7 @@
 
 Merges ``auto_regressive_weekly_v2`` and ``auto_regressive_monthly_v2`` into one
 model, with the shared ``chap_auto_regressive`` library vendored in as
-``chapkit_auto_regressive.core``. With the same options and the same data, the
+``chapkit_deep_auto_regressive.core``. With the same options and the same data, the
 forecasts match the two models it replaces.
 
 Design notes:
@@ -101,20 +101,21 @@ class AutoRegressiveConfig(BaseConfig):
 
 
 runner: ShellModelRunner[AutoRegressiveConfig] = ShellModelRunner(
-    train_command="python -m chapkit_auto_regressive.train {data_file} model --config config.yml",
-    predict_command="python -m chapkit_auto_regressive.predict model {historic_file} {future_file} {output_file}",
+    train_command="python -m chapkit_deep_auto_regressive.train {data_file} model --config config.yml",
+    predict_command="python -m chapkit_deep_auto_regressive.predict model {historic_file} {future_file} {output_file}",
     config_format="chap_core",
 )
 
 info = MLServiceInfo(
-    id="chapkit-auto-regressive",
-    display_name="Deep Auto Regressive v2 (chapkit)",
+    id="deep-auto-regressive",
+    display_name="Deep Auto Regressive (weekly and monthly)",
     version="0.1.0",
     description=(
-        "An experimental deep learning model based on an RNN architecture, focusing on predictions based on "
-        "auto-regressive time series data. Supports weekly and monthly data: the period type is read from the "
-        "data and picks the context, horizon and training defaults. Merges the Weekly and Monthly Deep Auto "
-        "Regressive v2 models."
+        "An experimental deep learning model: an ensemble of recurrent neural networks that forecasts disease "
+        "cases from their own history and climate covariates. Supports weekly and monthly data. The defaults "
+        "are the monthly v2 model's; set context_length 52, prediction_length 12, learning_rate 1e-5 and "
+        "n_iter 1000 to reproduce the weekly v2 model. Replaces the Weekly and Monthly Deep Auto Regressive "
+        "v2 models."
     ),
     model_metadata=ModelMetadata(
         author="Knut Rand",
@@ -135,7 +136,7 @@ info = MLServiceInfo(
 )
 
 HIERARCHY = ArtifactHierarchy(
-    name="chapkit_auto_regressive",
+    name="chapkit_deep_auto_regressive",
     level_labels={0: "ml_training_workspace", 1: "ml_prediction"},
 )
 
@@ -163,4 +164,4 @@ app = (
 if __name__ == "__main__":
     from chapkit.api import run_app
 
-    run_app("chapkit_auto_regressive.service:app", reload=False)
+    run_app("chapkit_deep_auto_regressive.service:app", reload=False)

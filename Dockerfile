@@ -18,7 +18,7 @@ ARG GIT_REVISION=""
 ENV GIT_REVISION=${GIT_REVISION}
 
 # The package itself, installed (not editable) into the venv: the runner copies
-# /work into a per-job workspace and runs `python -m chapkit_auto_regressive.*`
+# /work into a per-job workspace and runs `python -m chapkit_deep_auto_regressive.*`
 # there, which must resolve to the installed package.
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \

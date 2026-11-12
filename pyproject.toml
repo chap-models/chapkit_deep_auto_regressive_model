@@ -1,5 +1,5 @@
 [project]
-name = "chapkit-auto-regressive"
+name = "chapkit-deep-auto-regressive"
 version = "0.1.0"
 description = "Chapkit service for the deep auto-regressive (RNN, flax/jax) Chap model, weekly and monthly"
 readme = "README.md"
@@ -10,7 +10,7 @@ authors = [
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "chapkit>=2.5.0,<3",
-    # Vendored chap_auto_regressive library (src/chapkit_auto_regressive/core/).
+    # Vendored chap_auto_regressive library (src/chapkit_deep_auto_regressive/core/).
     "flax>=0.10.2",
     "jax>=0.4.34",
     "optax>=0.2.4",
@@ -54,7 +54,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 # The vendored library (and its tests) is kept as close to upstream as possible:
 # style and import rules only, no docstring or security rules.
-"src/chapkit_auto_regressive/core/**/*.py" = ["D", "S"]
+"src/chapkit_deep_auto_regressive/core/**/*.py" = ["D", "S"]
 # Tests assert, run subprocesses and unpickle their own fixtures; fine outside product code.
 "tests/**/*.py" = ["D", "S101", "S301", "S603", "S607"]
 # The parity tools run the reference models and this one as subprocesses.
@@ -76,7 +76,7 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.13"
 files = ["src", "tests", "tools", "main.py"]
-exclude = ["^src/chapkit_auto_regressive/core/", "^tests/library/"]
+exclude = ["^src/chapkit_deep_auto_regressive/core/", "^tests/library/"]
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -89,7 +89,7 @@ explicit_package_bases = true
 
 # The vendored library is type-checked upstream (chap_auto_regressive), not here.
 [[tool.mypy.overrides]]
-module = "chapkit_auto_regressive.core.*"
+module = "chapkit_deep_auto_regressive.core.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
@@ -103,7 +103,7 @@ ignore_missing_imports = true
 
 [tool.pyright]
 include = ["src", "tests", "tools", "main.py"]
-exclude = ["**/.venv", "src/chapkit_auto_regressive/core", "tests/library"]
+exclude = ["**/.venv", "src/chapkit_deep_auto_regressive/core", "tests/library"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 useLibraryCodeForTypes = true

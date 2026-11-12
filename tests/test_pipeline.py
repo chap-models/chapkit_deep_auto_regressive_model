@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from chapkit_auto_regressive.model import WEEKLY_V2_OPTIONS
+from chapkit_deep_auto_regressive.model import WEEKLY_V2_OPTIONS
 
 REPO = Path(__file__).resolve().parent.parent
 DATA = {
@@ -53,7 +53,7 @@ def _train_and_predict(
     )
     future.to_csv(tmp_path / "future.csv", index=False)
     subprocess.run(
-        [sys.executable, "-m", "chapkit_auto_regressive.train", str(data), str(model), "--config", str(config)],
+        [sys.executable, "-m", "chapkit_deep_auto_regressive.train", str(data), str(model), "--config", str(config)],
         cwd=REPO,
         env=env,
         check=True,
@@ -62,7 +62,7 @@ def _train_and_predict(
         [
             sys.executable,
             "-m",
-            "chapkit_auto_regressive.predict",
+            "chapkit_deep_auto_regressive.predict",
             str(model),
             str(data),
             str(tmp_path / "future.csv"),
@@ -107,14 +107,16 @@ def test_undeclared_covariate_column_is_not_used(tmp_path: Path) -> None:
     cmd = [
         sys.executable,
         "-m",
-        "chapkit_auto_regressive.train",
+        "chapkit_deep_auto_regressive.train",
         str(tmp_path / "train.csv"),
         str(tmp_path / "m"),
         "--config",
     ]
     subprocess.run([*cmd, str(tmp_path / "config.yml")], cwd=REPO, env=env, check=True)
     files = [str(tmp_path / name) for name in ("m", "historic.csv", "future.csv", "out.csv")]
-    subprocess.run([sys.executable, "-m", "chapkit_auto_regressive.predict", *files], cwd=REPO, env=env, check=True)
+    subprocess.run(
+        [sys.executable, "-m", "chapkit_deep_auto_regressive.predict", *files], cwd=REPO, env=env, check=True
+    )
     assert len(pd.read_csv(tmp_path / "out.csv")) == df["location"].nunique() * 3
 
 

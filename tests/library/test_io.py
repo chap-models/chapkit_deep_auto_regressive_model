@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from chapkit_auto_regressive.core import AutoRegressiveModel
-from chapkit_auto_regressive.core.transforms import REQUIRED_COVARIATES, get_series
+from chapkit_deep_auto_regressive.core import AutoRegressiveModel
+from chapkit_deep_auto_regressive.core.transforms import REQUIRED_COVARIATES, get_series
 
 
 def _small_trained_model():

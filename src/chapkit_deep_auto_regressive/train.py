@@ -1,4 +1,6 @@
-"""Train entry point: ``python -m chapkit_auto_regressive.train <train_data.csv> <model_out> [--config config.yml]``.
+"""Train entry point.
+
+Usage: ``python -m chapkit_deep_auto_regressive.train <train_data.csv> <model_out> [--config config.yml]``.
 
 The config is a Chap model-configuration YAML (``additional_continuous_covariates``
 and ``prediction_periods`` at the top level, the model knobs under
@@ -16,8 +18,8 @@ import pandas as pd
 import yaml
 from pydantic import BaseModel
 
-from chapkit_auto_regressive.core import AutoRegressiveModel
-from chapkit_auto_regressive.model import build_model, detect_period_type
+from chapkit_deep_auto_regressive.core import AutoRegressiveModel
+from chapkit_deep_auto_regressive.model import build_model, detect_period_type
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

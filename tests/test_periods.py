@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from chapkit_auto_regressive.model import (
+from chapkit_deep_auto_regressive.model import (
     DEFAULTS,
     MODEL_OPTIONS,
     WEEKLY_V2_OPTIONS,
@@ -13,7 +13,7 @@ from chapkit_auto_regressive.model import (
     detect_period_type,
     resolve_options,
 )
-from chapkit_auto_regressive.service import AutoRegressiveConfig
+from chapkit_deep_auto_regressive.service import AutoRegressiveConfig
 
 
 @pytest.mark.parametrize(
@@ -96,7 +96,7 @@ def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged() -> No
     # models used must parse exactly as before.
     from datetime import datetime
 
-    from chapkit_auto_regressive.core.transforms import period_start_date
+    from chapkit_deep_auto_regressive.core.transforms import period_start_date
 
     assert period_start_date("2020W01") == period_start_date("2020-W01") == datetime(2019, 12, 30)
     with pytest.raises(ValueError):
@@ -117,7 +117,7 @@ def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged() -> No
 def test_iso_weeks_are_ordered_by_date_not_text(periods: list[str]) -> None:
     import pandas as pd
 
-    from chapkit_auto_regressive.core.transforms import location_groups, period_start_date
+    from chapkit_deep_auto_regressive.core.transforms import location_groups, period_start_date
 
     frame = pd.DataFrame({"location": "a", "time_period": periods})
     ((_, rows),) = list(location_groups(frame))
@@ -128,7 +128,7 @@ def test_iso_weeks_are_ordered_by_date_not_text(periods: list[str]) -> None:
 def test_monthly_and_range_order_is_unchanged() -> None:
     import pandas as pd
 
-    from chapkit_auto_regressive.core.transforms import location_groups
+    from chapkit_deep_auto_regressive.core.transforms import location_groups
 
     for periods in (
         ["2020-03", "2019-12", "2020-01", "2020-02"],
@@ -140,7 +140,7 @@ def test_monthly_and_range_order_is_unchanged() -> None:
 
 
 def test_run_config_reads_chap_layout_and_ignores_other_keys(tmp_path: Path) -> None:
-    from chapkit_auto_regressive.train import _read_config
+    from chapkit_deep_auto_regressive.train import _read_config
 
     config = tmp_path / "config.yml"
     config.write_text(
