@@ -23,3 +23,4 @@ wheels/
 data/
 test_out/
 *.db
+.bench/

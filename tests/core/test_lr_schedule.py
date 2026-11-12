@@ -33,15 +33,15 @@ def _frame(n_periods: int, n_locations: int = 3, seed: int = 0) -> pd.DataFrame:
 def _model(**options: Any) -> DeepAutoRegressiveModel:
     """A small, fast model configuration."""
     model = DeepAutoRegressiveModel()
-    model.context_length = 6
-    model.prediction_length = 2
-    model.n_ensemble = 1
-    model.n_iter = 10
-    model.eval_every = 2
-    model.patience = 3
-    model.validation_periods = 4
+    model.options.context_length = 6
+    model.options.prediction_length = 2
+    model.options.n_ensemble = 1
+    model.options.n_iter = 10
+    model.options.eval_every = 2
+    model.options.patience = 3
+    model.options.validation_periods = 4
     for key, value in options.items():
-        setattr(model, key, value)
+        setattr(model.options, key, value)
     return model
 
 
@@ -75,4 +75,4 @@ def test_train_and_predict_with_warmup_cosine_schedule(early_stopping: bool) -> 
     assert len(samples) == len(future)
     assert np.isfinite(samples[sample_cols].to_numpy()).all()
     # The schedule is applied per trainer and never replaces the configured rate.
-    assert model.learning_rate == 1e-3
+    assert model.options.learning_rate == 1e-3

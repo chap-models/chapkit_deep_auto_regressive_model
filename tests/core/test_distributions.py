@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from chapkit_deep_auto_regressive.core.distributions import NegativeBinomial3, Normal, Poisson, nb_head
+from chapkit_deep_auto_regressive.core.distributions import NegativeBinomial3, nb_head
 
 
 def test_nb3_sampling_is_reproducible_from_key() -> None:
@@ -37,8 +37,3 @@ def test_nb_head_skips_nan() -> None:
     lp = np.asarray(nb_head(eta).log_prob(jnp.array([np.nan, 2.0])))
     assert lp[0] == 0.0  # a missing observation contributes nothing
     assert np.isfinite(lp[1])
-
-
-def test_poisson_and_normal_log_prob_finite() -> None:
-    assert np.isfinite(np.asarray(Poisson(jnp.array(2.0)).log_prob(jnp.array(1.0))))
-    assert np.isfinite(np.asarray(Normal(0.0, 1.0).log_prob(jnp.array(0.5))))

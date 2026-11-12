@@ -44,24 +44,6 @@ def _identity(pair: FeaturePair) -> FeaturePair:
     return pair
 
 
-def nan_helper(y: Array) -> tuple[NDArray[np.bool_], Callable[[NDArray[np.bool_]], NDArray[np.intp]]]:
-    """Return helpers for locating NaNs in a 1-D array.
-
-    Args:
-        y: A 1-D array.
-
-    Returns:
-        A tuple ``(mask, index_fn)`` where ``mask`` is a boolean array marking the
-        NaNs and ``index_fn`` maps such a mask to the integer positions it
-        selects — the form expected by ``numpy.interp``.
-    """
-
-    def index_fn(z: NDArray[np.bool_]) -> NDArray[np.intp]:
-        return z.nonzero()[0]
-
-    return np.isnan(y), index_fn
-
-
 def interpolate_nans(y: Array) -> Array:
     """Linearly interpolate over NaNs in each row of a 2-D array.
 
@@ -78,7 +60,7 @@ def interpolate_nans(y: Array) -> Array:
     """
     y = y.copy()
     for row in y:
-        nans, x = nan_helper(row)
+        nans = np.isnan(row)
         if nans.all():
             # No observed cases at all for this location/window: there is nothing
             # to interpolate from. Fill the auto-regressive input with zeros so it
@@ -86,7 +68,7 @@ def interpolate_nans(y: Array) -> Array:
             # skips these periods and they contribute no training signal.
             row[nans] = 0.0
             continue
-        row[nans] = np.interp(x(nans), x(~nans), row[~nans])
+        row[nans] = np.interp(np.flatnonzero(nans), np.flatnonzero(~nans), row[~nans])
     return y
 
 
@@ -189,76 +171,3 @@ class SimpleDataLoader:
         """Yield each window of the dataset in index order."""
         for i in range(len(self.dataset)):
             yield self.dataset[i]
-
-
-class DataLoader:
-    """Iterates over windows with an optional held-out validation block.
-
-    Unlike [`SimpleDataLoader`][chapkit_deep_auto_regressive.core.data_loader.SimpleDataLoader], this loader
-    can carve a contiguous validation region out of the middle of the series and
-    mask the overlapping windows out of training, so the same series provides both
-    training and validation windows.
-    """
-
-    def __init__(
-        self,
-        X: Array,
-        y: Array,
-        forecast_length: int,
-        context_length: int | None = None,
-        do_validation: bool = False,
-    ) -> None:
-        """Build the windows and, optionally, the validation mask.
-
-        Args:
-            X: Features, shape ``(locations, periods, features)``.
-            y: Target, shape ``(locations, periods)``.
-            forecast_length: Number of periods to forecast per window.
-            context_length: Number of history periods per window; defaults to all
-                periods before the forecast region.
-            do_validation: If true, reserve a window near the middle for
-                validation and mask the windows that overlap it out of training.
-        """
-        self._X = X  # n_locations, n_periods, n_features
-        self._y = y  # n_locations, n_periods
-        self._interpolated_y = interpolate_nans(y)
-        self._context_length = context_length or X.shape[1] - forecast_length
-        self._forecast_length = forecast_length
-        self._total_length = self._context_length + forecast_length
-        self.validation_mask = np.ones(X.shape[1] - self._total_length + 1, dtype=bool)
-        if do_validation:
-            self._validation_index = (X.shape[1] - self._total_length) // 2
-            self.validation_mask[
-                self._validation_index - forecast_length : self._validation_index + forecast_length
-            ] = False
-        self.do_validation = do_validation
-
-    def __len__(self) -> int:
-        """Return the number of training windows (excluding any masked out)."""
-        return int(np.sum(self.validation_mask))
-
-    def __iter__(self) -> Iterator[Window]:
-        """Yield each non-masked training window as ``(x, ar_y, y)``."""
-        # Window start offsets, in order, skipping those masked out for validation.
-        starts: list[int] = np.flatnonzero(self.validation_mask).tolist()
-        return (
-            (
-                self._X[:, start : start + self._total_length],
-                self._interpolated_y[:, start : start + self._context_length],
-                self._y[:, start : start + self._total_length],
-            )
-            for start in starts
-        )
-
-    def validation_set(self) -> Window:
-        """Return the held-out validation window as ``(x, ar_y, y)``.
-
-        Returns:
-            The single window reserved for validation. Only meaningful when the
-            loader was created with ``do_validation=True``.
-        """
-        return (
-            self._X[:, self._validation_index : self._validation_index + self._total_length],
-            self._interpolated_y[:, self._validation_index : self._validation_index + self._context_length],
-            self._y[:, self._validation_index : self._validation_index + self._total_length],
-        )

@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 import chapkit_deep_auto_regressive.core.model as model_module
-from chapkit_deep_auto_regressive.core import DeepAutoRegressiveModel
+from chapkit_deep_auto_regressive.core import DeepAutoRegressiveModel, ModelOptions
 from chapkit_deep_auto_regressive.core.data_loader import DataSet, SimpleDataLoader, WindowLoader
 from chapkit_deep_auto_regressive.core.rnn_model import build_network
 from chapkit_deep_auto_regressive.core.trainer import LossFn, Trainer, TrainState
@@ -36,16 +36,16 @@ def _frame(n_periods: int, n_locations: int = 3, seed: int = 0) -> pd.DataFrame:
 
 def _model(**options: Any) -> DeepAutoRegressiveModel:
     """A small, fast model configuration."""
-    model = DeepAutoRegressiveModel()
-    model.context_length = 6
-    model.prediction_length = 2
-    model.n_ensemble = 1
-    model.n_iter = 30
-    model.eval_every = 2
-    model.patience = 3
-    model.validation_periods = 4
+    model = DeepAutoRegressiveModel(ModelOptions(early_stopping=True))
+    model.options.context_length = 6
+    model.options.prediction_length = 2
+    model.options.n_ensemble = 1
+    model.options.n_iter = 30
+    model.options.eval_every = 2
+    model.options.patience = 3
+    model.options.validation_periods = 4
     for key, value in options.items():
-        setattr(model, key, value)
+        setattr(model.options, key, value)
     return model
 
 
@@ -53,17 +53,16 @@ def test_split_is_contiguous_and_final_in_time():
     """The held-out block is the tail of the series, never a random subset."""
     model = _model()
     model._locations = ["loc0", "loc1", "loc2"]
-    model._n_locations = 3
     data = _frame(40)
     loaders = model._early_stopping_loaders(data)
     assert loaders is not None
     fit_loader, validation_loader = loaders
 
-    total_length = model.context_length + model.prediction_length
-    n_validation = total_length + model.validation_periods
+    total_length = model.options.context_length + model.options.prediction_length
+    n_validation = total_length + model.options.validation_periods
     # The validation windows must come from the final n_validation periods, so the
     # first validation target cannot appear anywhere in the training windows.
-    assert len(validation_loader.dataset) == model.validation_periods + 1
+    assert len(validation_loader.dataset) == model.options.validation_periods + 1
     assert len(fit_loader.dataset) == 40 - n_validation - total_length + 1
 
 
@@ -71,10 +70,9 @@ def test_too_short_a_series_raises_rather_than_falling_back():
     """A silent fallback would reintroduce the overtraining this prevents."""
     model = _model()
     model._locations = ["loc0", "loc1", "loc2"]
-    model._n_locations = 3
-    total_length = model.context_length + model.prediction_length
+    total_length = model.options.context_length + model.options.prediction_length
     # Held-out block, plus enough left for the probe to get min_probe_windows.
-    minimum = (total_length + model.validation_periods) + total_length + model.min_probe_windows - 1
+    minimum = (total_length + model.options.validation_periods) + total_length + model.options.min_probe_windows - 1
 
     model._early_stopping_loaders(_frame(minimum))  # exactly enough: fine
 
@@ -86,11 +84,11 @@ def test_disabled_or_externally_supplied_validation_returns_none():
     """Early stopping steps aside when switched off or when given a window."""
     data = _frame(40)
     off = _model(early_stopping=False)
-    off._locations, off._n_locations = ["loc0", "loc1", "loc2"], 3
+    off._locations = ["loc0", "loc1", "loc2"]
     assert off._early_stopping_loaders(data) is None
 
     supplied = _model()
-    supplied._locations, supplied._n_locations = ["loc0", "loc1", "loc2"], 3
+    supplied._locations = ["loc0", "loc1", "loc2"]
     supplied._validation_loader = SimpleDataLoader(DataSet(np.zeros((3, 10, 1)), np.zeros((3, 10)), forecast_length=2))
     assert supplied._early_stopping_loaders(data) is None
 
@@ -144,7 +142,7 @@ def test_refit_budget_is_computed_in_steps_under_both_scalings(monkeypatch: pyte
 
     def run(scaling: str) -> tuple[dict[str, Any], dict[str, Any]]:
         model = _model(refit_scaling=scaling)
-        model.validation_periods = 4
+        model.options.validation_periods = 4
         records: list[dict[str, Any]] = []
 
         class Recording(Trainer):
@@ -180,19 +178,18 @@ def test_refit_budget_is_computed_in_steps_under_both_scalings(monkeypatch: pyte
 
 def test_unknown_refit_scaling_is_rejected():
     """A typo in the option must fail loudly rather than silently pick a default."""
-    model = _model(refit_scaling="per-epoch")
     with pytest.raises(ValueError, match="refit_scaling"):
-        model.train(_frame(60))
+        _model(refit_scaling="per-epoch")
 
 
 def test_a_probe_with_too_few_windows_is_rejected():
     """One probe window clears a length check but cannot locate a minimum."""
     model = _model()
-    model.context_length = 16
-    model.prediction_length = 3
-    model.validation_periods = 8
-    model.min_probe_windows = 5
-    model._locations, model._n_locations = ["loc0", "loc1", "loc2"], 3
+    model.options.context_length = 16
+    model.options.prediction_length = 3
+    model.options.validation_periods = 8
+    model.options.min_probe_windows = 5
+    model._locations = ["loc0", "loc1", "loc2"]
 
     with pytest.raises(ValueError, match="windows"):
         model._early_stopping_loaders(_frame(46))

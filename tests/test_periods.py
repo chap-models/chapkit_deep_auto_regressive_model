@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from chapkit_deep_auto_regressive.model import (
-    DEFAULTS,
     MODEL_OPTIONS,
     WEEKLY_OPTIONS,
     build_model,
@@ -38,14 +38,24 @@ def test_detect_period_type_rejects_unknown_or_mixed(periods: list[str]) -> None
 def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AR_N_ITER", raising=False)
     model = build_model()
-    assert (model.context_length, model.prediction_length, model.learning_rate, model.n_iter) == (36, 3, 1e-3, 400)
-    assert model.early_stopping is False
+    assert (
+        model.options.context_length,
+        model.options.prediction_length,
+        model.options.learning_rate,
+        model.options.n_iter,
+    ) == (36, 3, 1e-3, 400)
+    assert model.options.early_stopping is False
 
 
 def test_weekly_options(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AR_N_ITER", raising=False)
     model = build_model(WEEKLY_OPTIONS)
-    assert (model.context_length, model.prediction_length, model.learning_rate, model.n_iter) == (52, 12, 1e-5, 1000)
+    assert (
+        model.options.context_length,
+        model.options.prediction_length,
+        model.options.learning_rate,
+        model.options.n_iter,
+    ) == (52, 12, 1e-5, 1000)
 
 
 def test_weekly_example_config_sets_the_weekly_options() -> None:
@@ -53,24 +63,31 @@ def test_weekly_example_config_sets_the_weekly_options() -> None:
     assert {key: config["user_option_values"][key] for key in WEEKLY_OPTIONS} == WEEKLY_OPTIONS
 
 
-def test_none_takes_the_default_and_explicit_values_win() -> None:
+def test_none_takes_the_default_and_explicit_values_win(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AR_N_ITER", raising=False)
     resolved = resolve_options({"context_length": None, "n_iter": 50, "prediction_length": 6})
-    assert resolved["context_length"] == DEFAULTS["context_length"]
-    assert resolved["learning_rate"] == DEFAULTS["learning_rate"]
-    assert (resolved["n_iter"], resolved["prediction_length"]) == (50, 6)
+    assert (resolved.context_length, resolved.learning_rate) == (36, 1e-3)
+    assert (resolved.n_iter, resolved.prediction_length) == (50, 6)
 
 
 def test_horizon_is_raised_to_the_requested_prediction_periods() -> None:
-    assert resolve_options({}, prediction_periods=6)["prediction_length"] == 6
-    assert resolve_options({}, prediction_periods=2)["prediction_length"] == 3
-    assert resolve_options({"prediction_length": 2}, prediction_periods=6)["prediction_length"] == 6
-    assert resolve_options({"prediction_length": 12}, prediction_periods=6)["prediction_length"] == 12
+    assert resolve_options({}, prediction_periods=6).prediction_length == 6
+    assert resolve_options({}, prediction_periods=2).prediction_length == 3
+    assert resolve_options({"prediction_length": 2}, prediction_periods=6).prediction_length == 6
+    assert resolve_options({"prediction_length": 12}, prediction_periods=6).prediction_length == 12
 
 
 def test_build_model_applies_user_options_and_ignores_unknown() -> None:
     model = build_model({"context_length": 18, "n_ensemble": 3, "cell": "simple", "bogus_option": 1})
-    assert (model.context_length, model.n_ensemble, model.cell) == (18, 3, "simple")
-    assert not hasattr(model, "bogus_option")
+    assert (model.options.context_length, model.options.n_ensemble, model.options.cell) == (18, 3, "simple")
+    assert "bogus_option" not in model.options.model_dump()
+
+
+def test_invalid_option_values_are_rejected() -> None:
+    with pytest.raises(ValidationError):
+        build_model({"cell": "lstm"})
+    with pytest.raises(ValidationError):
+        build_model({"context_length": 0})
 
 
 def test_service_config_declares_every_model_option() -> None:
@@ -86,9 +103,7 @@ def test_service_config_defaults_are_the_model_defaults(monkeypatch: pytest.Monk
     monkeypatch.delenv("AR_N_ITER", raising=False)
     options = AutoRegressiveConfig().model_dump(exclude={"prediction_periods", "additional_continuous_covariates"})
     from_config, plain = build_model(options), build_model()
-    assert {key: getattr(from_config, key) for key in MODEL_OPTIONS} == {
-        key: getattr(plain, key) for key in MODEL_OPTIONS
-    }
+    assert from_config.options == plain.options
 
 
 def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged() -> None:

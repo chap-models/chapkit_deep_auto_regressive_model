@@ -18,7 +18,7 @@ import pandas as pd
 import yaml
 from pydantic import BaseModel
 
-from chapkit_deep_auto_regressive.core import DeepAutoRegressiveModel
+from chapkit_deep_auto_regressive.core.options import ModelOptions
 from chapkit_deep_auto_regressive.model import build_model, detect_period_type
 
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +41,7 @@ def _read_config(config_path: str | None) -> RunConfig:
         return RunConfig.model_validate(yaml.safe_load(f) or {})
 
 
-def _clamp_context_length(model: DeepAutoRegressiveModel, data: pd.DataFrame) -> None:
+def _clamp_context_length(options: ModelOptions, data: pd.DataFrame) -> None:
     """Shrink ``context_length`` so the training data yields at least one window.
 
     Training needs ``context_length + prediction_length`` periods per window and
@@ -51,20 +51,20 @@ def _clamp_context_length(model: DeepAutoRegressiveModel, data: pd.DataFrame) ->
     """
     period_counts: list[int] = data.groupby("location")["time_period"].nunique().tolist()
     periods = min(period_counts)
-    max_context = periods - model.prediction_length
+    max_context = periods - options.prediction_length
     if max_context < 1:
         raise ValueError(
             f"training data is too short: the shortest location history has {periods} periods, "
-            f"but at least prediction_length+1={model.prediction_length + 1} are needed"
+            f"but at least prediction_length+1={options.prediction_length + 1} are needed"
         )
-    if model.context_length > max_context:
+    if options.context_length > max_context:
         logger.warning(
             "context_length=%d exceeds the available history (%d periods); clamping to %d",
-            model.context_length,
+            options.context_length,
             periods,
             max_context,
         )
-        model.context_length = max_context
+        options.context_length = max_context
 
 
 def main() -> None:
@@ -79,23 +79,24 @@ def main() -> None:
     config = _read_config(args.config)
     period_type = detect_period_type(data["time_period"])
     model = build_model(config.user_option_values or {}, prediction_periods=config.prediction_periods)
+    options = model.options
     logger.info(
         "Period type %s: context_length=%d, prediction_length=%d, learning_rate=%g, n_iter=%d",
         period_type,
-        model.context_length,
-        model.prediction_length,
-        model.learning_rate,
-        model.n_iter,
+        options.context_length,
+        options.prediction_length,
+        options.learning_rate,
+        options.n_iter,
     )
-    _clamp_context_length(model, data)
+    _clamp_context_length(options, data)
     # Only the covariates the configuration declares are fed to the network on
     # top of the required three. Chap writes every dataset column into the
     # training CSV, so the columns present do not decide what is used. The chosen
     # covariates are persisted in the saved predictor, so predict.py needs no
     # matching configuration.
-    model.additional_covariates = list(config.additional_continuous_covariates or [])
-    if model.additional_covariates:
-        logger.info("Using additional covariates: %s", model.additional_covariates)
+    options.additional_covariates = tuple(config.additional_continuous_covariates or ())
+    if options.additional_covariates:
+        logger.info("Using additional covariates: %s", options.additional_covariates)
     predictor = model.train(data)
     predictor.save(args.model)
 
