@@ -76,8 +76,9 @@ CASES: dict[str, list[tuple[str, list[str], dict[str, Any], str]]] = {
 #: same case (median 18%, max 75%). Every other case must match exactly.
 #:
 #: The exception is narrow: it applies only to short runs (it was measured at 30
-#: epochs, not at full length) and not on Linux arm64, where these cases still
-#: match exactly. Its limits: the shift depends on the processor (an emulated
+#: epochs) and not on Linux arm64, where these cases still match exactly. At
+#: full length most cases drift on jax 0.12 (see the README), so ``--full`` runs
+#: fail on them; there is no tolerance for full length yet. Its limits: the shift depends on the processor (an emulated
 #: x86_64 run reached a median of 13%), so the check can fail on some CI
 #: runners, and a bound this close to the seed-to-seed shift would not catch a
 #: small real regression in these two cases.
