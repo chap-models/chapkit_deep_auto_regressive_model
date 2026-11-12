@@ -127,32 +127,63 @@ an environment (`uv_env` / `docker_env`).
 
 ## Reference check
 
-With the same options and data, the forecasts are identical to those of the two models this one
-replaces, [auto_regressive_weekly_v2](https://github.com/chap-models/auto_regressive_weekly_v2)
+This model replaces [auto_regressive_weekly_v2](https://github.com/chap-models/auto_regressive_weekly_v2)
 (with the weekly values above) and
 [auto_regressive_monthly_v2](https://github.com/chap-models/auto_regressive_monthly_v2) (with the
-defaults), with one exception, described below. `tools/compare_reference.py` runs a reference
-repo's own scripts in its locked environment and this model's modules on the same data, and
-compares the prediction CSVs; `tools/api_compare.py` does the same through the service API. CI
-runs `make compare`.
+defaults). `tools/compare_reference.py` runs a reference repo's own scripts in its locked
+environment and this model's modules on the same data, and compares the prediction CSVs;
+`tools/api_compare.py` does the same through the service API. CI runs `make compare`, with short
+30-epoch runs.
 
-The exception: with `lr_schedule: warmup_cosine` the weekly forecasts differ on some processors,
-because jax 0.12 computes that schedule with different rounding from the jax 0.10 the reference
-models pin. On Linux arm64 they are identical; on macOS arm64 samples differ by up to one case;
-on Linux x86_64 the forecast means move by a median of 3.4% (at most 12%) in the 30-epoch CI
-comparison. A different random seed moves them far more (median 18%, at most 75%).
+On jax 0.10.1, the version the reference models pin, the forecasts were identical to theirs in all
+12 cases, at full training length and in short runs. This model now runs on jax 0.12, which
+computes some operations with slightly different rounding. Training amplifies those differences,
+so the forecasts no longer match the reference models sample for sample. How far they move
+depends on the training length, the configuration and the processor.
 
-So in short runs, except on Linux arm64, `tools/compare_reference.py` lets the two weekly
-warmup-cosine cases differ as long as each forecast's mean and its 10th and 90th percentiles move
-by a median of at most 15% and at most 30% in any one forecast. The shift is relative to the
-reference value, or in cases when that is below 1. Every other case, every case on Linux arm64,
-and every `--full` run must match exactly.
+### Short runs (30 epochs, as in CI)
+
+Every case is identical except the two weekly warmup-cosine cases, and on Linux arm64 those match
+too. On macOS arm64 their samples differ by up to one case. On Linux x86_64 their forecast means
+move by a median of 1.3-3.4% (at most 12%), depending on the CI runner. A different random seed
+moves the same short run far more (median 18%, at most 75%).
+
+So in short runs, except on Linux arm64, `tools/compare_reference.py` lets these two cases differ
+as long as each forecast's mean and its 10th and 90th percentiles move by a median of at most 15%
+and at most 30% in any one forecast. The shift is relative to the reference value, or in cases
+when that is below 1. Every other case, and every case on Linux arm64, must match exactly.
 
 The tolerance has two limits. The shift depends on the processor running the check, and one
 emulated x86_64 run reached a median of 13%, close to the bound, so the check can fail on some CI
 runners. The 10th percentile has the least room: on GitHub CI it moved by up to 25% in one forecast,
 against the 30% bound. And because the bound is near the seed-to-seed shift, it would not catch a
 small real regression in these two cases.
+
+### Full training length
+
+At full length (`--full`: 1000 epochs weekly, 400 monthly) more cases drift, because the rounding
+differences have far more steps to grow. On macOS arm64, 9 of the 12 cases differ:
+
+| Case | Forecast mean shift (median / max) |
+|---|---|
+| Weekly defaults | 0.2% / 1.0% |
+| Weekly single model | 1.5% / 4.2% |
+| Weekly additional covariate | under 0.1% (samples differ by at most one case) |
+| Weekly simple cell, 2 layers | 0.3% / 1.1% |
+| Weekly warmup-cosine | 10.4% / 29.9% |
+| Weekly warmup-cosine with early stopping | identical |
+| Weekly short history | identical |
+| Monthly defaults | identical |
+| Monthly context 12 | 5.2% / 20.0% |
+| Monthly additional covariate | 14.4% / 34.6% |
+| Monthly regularised | 4.8% / 14.8% |
+| Monthly simple cell, recursive decoding | 3.7% / 6.7% |
+
+The 10th and 90th percentiles move by similar amounts, more in a few forecasts of small counts.
+These numbers are from macOS only; Linux x86_64, where the short-run shifts were larger, has not
+been measured at full length. How much a full-length ensemble varies between random seeds has not
+been measured either, so whether these shifts are within normal run-to-run variation is open.
+`--full` runs are not covered by the tolerance and fail on the cases above.
 
 ### Rolling back the dependency upgrade
 
