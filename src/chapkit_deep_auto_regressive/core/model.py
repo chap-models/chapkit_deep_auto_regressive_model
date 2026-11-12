@@ -308,6 +308,15 @@ class DeepAutoRegressiveModel:
 
     distribution_head = staticmethod(nb_head)
 
+    # A fixed set of attributes, so that a typo or the earlier style of setting
+    # options on the model (``model.n_iter = 2``) fails instead of being ignored.
+    __slots__ = ("options", "_predictor", "_validation_loader", "_locations", "_validation_locations")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in ModelOptions.model_fields:
+            raise AttributeError(f"{name} is a model option; set model.options.{name} instead")
+        super().__setattr__(name, value)
+
     def __init__(self, options: ModelOptions | None = None) -> None:
         self.options = options if options is not None else ModelOptions()
         self._predictor: FlaxPredictor | None = None

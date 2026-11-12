@@ -340,3 +340,13 @@ def test_stacked_rnn_layers_train_and_predict() -> None:
     assert predictor.architecture.rnn_layers == 2
     out = predictor.predict(train_df, future, num_samples=6)
     assert np.isfinite(out[[c for c in out.columns if c.startswith("sample_")]].to_numpy()).all()
+
+
+def test_options_set_on_the_model_are_rejected() -> None:
+    # Options live on model.options; setting one on the model (the earlier
+    # style) must fail rather than be silently ignored by training.
+    model = DeepAutoRegressiveModel()
+    with pytest.raises(AttributeError, match="model.options.n_iter"):
+        model.n_iter = 2
+    with pytest.raises(AttributeError):
+        model.n_itre = 2

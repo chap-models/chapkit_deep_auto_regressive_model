@@ -43,13 +43,16 @@ CASES: list[tuple[str, Path, int, dict[str, Any]]] = [
 
 def _run(args: list[str], env: dict[str, str]) -> tuple[float, float]:
     """Run a command and return its wall time (s) and peak memory (MiB)."""
-    start = time.perf_counter()
-    process = subprocess.Popen(args, env=env, cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    _, status, usage = os.wait4(process.pid, 0)
-    elapsed = time.perf_counter() - start
-    if status != 0:
-        stderr = process.stderr.read().decode() if process.stderr else ""
-        raise RuntimeError(f"{' '.join(args)} failed:\n{stderr[-3000:]}")
+    # The log goes to a file, not a pipe: a pipe nobody reads while waiting for
+    # the process would fill up on a long run and block it.
+    with tempfile.TemporaryFile() as log:
+        start = time.perf_counter()
+        process = subprocess.Popen(args, env=env, cwd=REPO, stdout=subprocess.DEVNULL, stderr=log)
+        _, status, usage = os.wait4(process.pid, 0)
+        elapsed = time.perf_counter() - start
+        if status != 0:
+            log.seek(0)
+            raise RuntimeError(f"{' '.join(args)} failed:\n{log.read().decode()[-3000:]}")
     # ru_maxrss is in bytes on macOS and in KiB on Linux.
     peak = usage.ru_maxrss / (1024 * 1024) if sys.platform == "darwin" else usage.ru_maxrss / 1024
     return elapsed, peak
