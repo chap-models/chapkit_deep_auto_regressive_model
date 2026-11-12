@@ -70,7 +70,10 @@ CASES: dict[str, list[tuple[str, list[str], dict[str, Any], str]]] = {
 #: slightly different rounding from the jax 0.10 the references pin, and on some
 #: processors (Linux x86_64, macOS) training amplifies that into a small shift.
 #: The bounds sit below the shift a different random seed gives in the same case
-#: (median 18%, max 75%); every other case must still match exactly.
+#: (median 18%, max 75%); every other case must still match exactly. Two limits:
+#: the shift depends on the processor (an emulated x86_64 run reached a median of
+#: 13%), so the check can fail on some CI runners, and a bound this close to the
+#: seed-to-seed shift would not catch a small real regression in these cases.
 MEAN_SHIFT_TOLERANCE: dict[tuple[str, str], tuple[float, float]] = {
     ("week", "warmup-cosine"): (0.15, 0.30),
     ("week", "warmup-cosine-early-stopping"): (0.15, 0.30),
