@@ -10,9 +10,9 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
       - name: Sync dependencies
@@ -28,13 +28,13 @@ jobs:
   reference-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Check out the reference models
         run: |
           git clone --depth 1 https://github.com/chap-models/auto_regressive_weekly_v2.git ../auto_regressive_weekly_v2
           git clone --depth 1 https://github.com/chap-models/auto_regressive_monthly_v2.git ../auto_regressive_monthly_v2
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
       - name: Sync dependencies
@@ -45,9 +45,9 @@ jobs:
   docker-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
       - name: Sync dependencies
