@@ -11,12 +11,12 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "chapkit>=2.5.0,<3",
     # The network and its training (src/chapkit_deep_auto_regressive/core/).
-    "flax>=0.10.2",
-    "jax>=0.4.34",
-    "optax>=0.2.4",
-    "scipy>=1.11",
-    "numpy>=2.1",
-    "pandas>=2.1",
+    "flax>=0.12.12",
+    "jax>=0.12.0",
+    "optax>=0.2.9",
+    "scipy>=1.18.1",
+    "numpy>=2.5.4",
+    "pandas>=3.1.1",
     # The train module reads the Chap model-configuration YAML.
     "pyyaml>=6.0",
 ]
@@ -27,7 +27,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15",
+    "ruff>=0.17.5",
     "mypy>=1.20.2",
     "pyright>=1.1.409",
     "pandas-stubs>=3.0.0.260204",

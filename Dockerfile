@@ -1,7 +1,7 @@
 # Deep auto-regressive chapkit service. The chapkit-py base ships Python 3.13,
 # uv and an empty venv at /app/.venv (on PATH). Multi-arch: jax has wheels for
 # both linux/amd64 and linux/arm64, so no platform is pinned.
-FROM ghcr.io/dhis2-chap/chapkit-py:latest@sha256:107479a76c4964c08e2125433d7728894d93e2cd5695a51b621b206c299cffd2
+FROM ghcr.io/dhis2-chap/chapkit-py:latest@sha256:7c85d4d52af9693766f61bc8604ee59d2f86ffb7e77224f7aa30fd816eb85a80
 
 USER root
 WORKDIR /work
