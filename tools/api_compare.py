@@ -1,4 +1,4 @@
-"""Compare forecasts made through the chapkit service API with the v2 reference model.
+"""Compare forecasts made through the chapkit service API with the reference model.
 
 Drives a running service the way Chap does (POST config, POST $train, poll the
 job, POST $predict, read the prediction artifact) on the bundled example data,
@@ -26,7 +26,7 @@ import pandas as pd
 import yaml
 
 # Run as a script (python tools/api_compare.py), so its own folder is on sys.path.
-from compare_v2 import BASE_OPTIONS, DATA, HORIZON, _run
+from compare_reference import BASE_OPTIONS, DATA, HORIZON, _run
 
 # (name, user options) per period type; options go to the service config and the reference config alike.
 CASES: dict[str, list[tuple[str, dict[str, Any]]]] = {

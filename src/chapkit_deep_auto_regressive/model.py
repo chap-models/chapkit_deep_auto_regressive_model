@@ -1,10 +1,9 @@
 """Build the deep auto-regressive model for weekly or monthly data.
 
-One model serves both period types, with one set of defaults: those of
-``auto_regressive_monthly_v2`` (36-period context, 3-period horizon, Adam at
-1e-3 for 400 epochs, the library defaults). Monthly runs reproduce that model
-unchanged. Weekly runs reproduce ``auto_regressive_weekly_v2`` when they set its
-four values, ``WEEKLY_V2_OPTIONS`` (as ``configs/weekly_example.yaml`` does).
+One model serves both period types, with one set of defaults (36-period
+context, 3-period horizon, Adam at 1e-3 for 400 epochs, the library defaults).
+Weekly data has recommended values of its own for those four knobs,
+``WEEKLY_OPTIONS`` (as ``configs/weekly_example.yaml`` sets).
 """
 
 import logging
@@ -19,13 +18,11 @@ logger = logging.getLogger(__name__)
 
 PeriodType = Literal["week", "month"]
 
-#: The defaults of the four knobs on which the two v2 models differed: the
-#: monthly v2 model's values, which are also the library's defaults.
+#: The defaults of the knobs that have recommended weekly values (the library's defaults).
 DEFAULTS: dict[str, Any] = {"context_length": 36, "prediction_length": 3, "learning_rate": 1e-3, "n_iter": 400}
 
-#: The weekly v2 model's values for those knobs. A weekly run that sets them
-#: reproduces auto_regressive_weekly_v2.
-WEEKLY_V2_OPTIONS: dict[str, Any] = {
+#: Recommended values of those knobs for weekly data.
+WEEKLY_OPTIONS: dict[str, Any] = {
     "context_length": 52,
     "prediction_length": 12,
     "learning_rate": 1e-5,
@@ -97,7 +94,7 @@ def resolve_options(
             ``None`` takes its default.
         prediction_periods: The horizon the run asks for. The trained horizon
             caps how far predict can reach, so ``prediction_length`` is raised to
-            this when it is shorter. The v2 models rejected such runs instead.
+            this when it is shorter.
     """
     resolved = {**DEFAULTS, **{key: value for key, value in (options or {}).items() if value is not None}}
     if prediction_periods and prediction_periods > resolved["prediction_length"]:

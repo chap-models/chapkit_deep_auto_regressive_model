@@ -25,11 +25,11 @@ jobs:
         run: make build-package
 
   # The merged model must forecast exactly like the two models it replaces.
-  parity:
+  reference-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Check out the v2 models
+      - name: Check out the reference models
         run: |
           git clone --depth 1 https://github.com/chap-models/auto_regressive_weekly_v2.git ../auto_regressive_weekly_v2
           git clone --depth 1 https://github.com/chap-models/auto_regressive_monthly_v2.git ../auto_regressive_monthly_v2
@@ -39,7 +39,7 @@ jobs:
           enable-cache: true
       - name: Sync dependencies
         run: uv sync --all-groups
-      - name: Compare forecasts with the v2 models
+      - name: Compare forecasts with the reference models
         run: make compare
 
   docker-test:

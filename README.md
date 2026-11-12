@@ -1,67 +1,44 @@
 # chapkit_deep_auto_regressive_model
 
-Deep Auto Regressive model for Chap, as a [chapkit](https://github.com/dhis2-chap/chapkit)
-service. An experimental deep learning model based on an RNN architecture (flax/jax), focusing
-on predictions based on auto-regressive time series data.
+Deep Auto Regressive: a deep learning model for Chap that forecasts disease cases from their own
+history and climate covariates, for **weekly and monthly data**. It is served with
+[chapkit](https://github.com/dhis2-chap/chapkit).
 
-It merges two models into one that handles **both weekly and monthly data**:
+## The model
 
-- [auto_regressive_weekly_v2](https://github.com/chap-models/auto_regressive_weekly_v2)
-- [auto_regressive_monthly_v2](https://github.com/chap-models/auto_regressive_monthly_v2)
+An encoder-decoder recurrent neural network (flax/jax, GRU cells by default). For each location it
+reads a window of past cases and covariates, adds a learned per-location embedding and seasonal
+calendar features, and outputs a negative binomial distribution for every future period. Five
+networks trained with different seeds form a deep ensemble, and their samples are pooled into the
+forecast.
 
-The shared model code, [chap_auto_regressive](https://github.com/chap-models/chap_auto_regressive),
-is vendored in as `chapkit_deep_auto_regressive.core` (from commit `c4d1d5c`). It is unchanged apart
-from the package name and three local changes:
-
-- ISO-week periods (`2020W05`, `2020-W05`) parse, so the model also accepts the week format
-  chapkit uses. The v2 models only read `start/end` ranges.
-- Each location's periods are ordered by start date rather than as text, so ISO weeks such as
-  `2020W2` and `2020W10`, or the two ISO forms mixed, stay in calendar order. For `YYYY-MM` and
-  `start/end` the order is the same as before.
-- With `lr_schedule: warmup_cosine` and `early_stopping: true` together, the early-stopping
-  probe's schedule is sized by the full series, as in the weekly v2 model. The library upstream
-  sizes it by the probe's own windows, which changes forecasts.
-
-Given the same options and data, the forecasts are identical to the two v2 models'
-(see [Parity with the v2 models](#parity-with-the-v2-models)). The defaults are the monthly
-v2 model's, so weekly runs set the weekly v2 values to match that model
-(see [Weekly and monthly data](#weekly-and-monthly-data)).
+Covariates: `rainfall`, `mean_temperature` and `population` are required. Covariates named in
+`additional_continuous_covariates` are fed to the network as extra features. Other columns in the
+data are ignored. The architecture, window lengths and covariates are saved with the trained
+model, so predict needs no configuration.
 
 ## Weekly and monthly data
 
-Both period types use the same options and **one set of defaults: the monthly v2 model's**. The
-period type is not configured. Weekly (`start/end` date range or ISO week, `YYYYWww` /
-`YYYY-Www`) and monthly (`YYYY-MM`) data are both accepted and checked when training starts.
+The period type is not configured. Weekly (`start/end` date range or ISO week, `YYYYWww` /
+`YYYY-Www`) and monthly (`YYYY-MM`) data are both accepted and checked when training starts. One set
+of defaults serves both. For weekly data, four options have recommended values of their own:
 
-Four options had different defaults in the two v2 models:
-
-| option | default (monthly v2) | weekly v2 |
+| option | default | recommended for weekly data |
 | --- | --- | --- |
 | `context_length` (periods of history read) | 36 | 52 |
 | `prediction_length` (trained horizon) | 3 | 12 |
 | `learning_rate` | 1e-3 | 1e-5 |
 | `n_iter` (epochs per ensemble member) | 400 | 1000 |
 
-- **Monthly runs** with the defaults give the same forecasts as `auto_regressive_monthly_v2`.
-- **Weekly runs** give the same forecasts as `auto_regressive_weekly_v2` only when they set the
-  weekly v2 values. [`configs/weekly_example.yaml`](configs/weekly_example.yaml) does, and
-  `chapkit_deep_auto_regressive.model.WEEKLY_V2_OPTIONS` holds them. With the defaults, a weekly
-  run reads 36 weeks of context and trains at 1e-3 for 400 epochs, so its forecasts differ from
-  the weekly v2 model's.
+[`configs/weekly_example.yaml`](configs/weekly_example.yaml) sets the weekly values, and
+`chapkit_deep_auto_regressive.model.WEEKLY_OPTIONS` holds them.
 
 When a run asks for a longer horizon (`prediction_periods`) than `prediction_length`, the trained
-horizon is raised to match, because predict cannot reach past it. The v2 models rejected such
-runs instead. This is what lets a weekly run with the defaults ask Chap for 12 weeks.
+horizon is raised to match, because predict cannot reach past it. This is what lets a weekly run
+with the defaults ask Chap for 12 weeks.
 
-Everything else has one default for both period types, as before: GRU cells, a 5-member deep
-ensemble, dropout 0.2, a constant learning rate, and early stopping off. The weekly v2 model's
-optional `warmup_cosine` learning-rate schedule is now part of the vendored library, so monthly
-runs can use it too.
-
-Covariates: `rainfall`, `mean_temperature` and `population` are required. Covariates named in
-`additional_continuous_covariates` are fed to the network as extra features. Other columns in the
-data are ignored. The architecture, window lengths and covariates are saved with the trained
-model, so predict needs no configuration.
+Other defaults: GRU cells, a 5-member deep ensemble, dropout 0.2, a constant learning rate
+(`lr_schedule: warmup_cosine` warms up to a peak and decays), and early stopping off.
 
 ## Known issues
 
@@ -69,25 +46,25 @@ model, so predict needs no configuration.
 prediction for a single future period fails with `ValueError: Need at least one array to stack`
 (`core/rnn_model.py:226`). The decoder loop gets an empty sequence, so `jnp.stack(etas)` has
 nothing to stack. The service advertises one-period forecasts (`min_prediction_periods` 1), so
-this is reachable from Chap. The bug comes from the v2 models, not from the merge, and it is
-not fixed yet. Fixing it means handling the empty decoder sequence and adding a regression test.
-Until then, leave `recursive_decode` off (the default) or request two or more periods.
+this is reachable from Chap. Fixing it means handling the empty decoder sequence and adding a
+regression test. Until then, leave `recursive_decode` off (the default) or request two or more
+periods.
 
 ## Layout
 
 ```
 src/chapkit_deep_auto_regressive/
   core/        vendored chap_auto_regressive library (network, trainer, data loading)
-  model.py     period detection and period-aware model building
+  model.py     defaults, option handling and period detection
   train.py     train entry point:   python -m chapkit_deep_auto_regressive.train <data> <model> --config <yml>
   predict.py   predict entry point: python -m chapkit_deep_auto_regressive.predict <model> <historic> <future> <out>
   service.py   the chapkit service: config schema, ShellModelRunner, service info
 main.py        re-exports the service at the root (uvicorn main:app, MLproject export)
 MLproject      generated from main.py by `chapkit mlproject export` -- do not edit by hand
-tools/         parity comparisons with the v2 models (script and API level)
+tools/         reference forecast comparisons (script and API level)
 configs/       example model configurations (weekly example, monthly full_rich)
 scripts/       data preparation for the monthly full_rich configuration
-example_data/  the v2 models' bundled weekly (Nicaragua) and monthly (Laos) data
+example_data/  example weekly (Nicaragua) and monthly (Laos) data
 ```
 
 This is a `uv_build` src-layout package. `uv build` (`make build-package`) builds the wheel, and
@@ -132,37 +109,38 @@ writes the literal `config.yml` the chapkit runner uses. The exporter also emits
 hint (`uv_env` / `docker_env`), so the commands would run in chap-core's own environment. Serve
 the MLproject with chapkit, as the GHR model does.
 
-## Parity with the v2 models
+## Vendored library
 
-`tools/compare_v2.py` runs a v2 repo's own `train.py`/`predict.py` (in that repo's locked
-environment) and this model's modules on the same data and configuration, and requires the
-prediction CSVs to be identical. `tools/api_compare.py` does the same through the service API.
+The network, trainer and data loading come from
+[chap_auto_regressive](https://github.com/chap-models/chap_auto_regressive), vendored in as
+`chapkit_deep_auto_regressive.core` (from commit `c4d1d5c`). Apart from the package name it has
+three local changes:
+
+- ISO-week periods (`2020W05`, `2020-W05`) parse, the week format chapkit uses. Upstream reads
+  only `start/end` ranges.
+- Each location's periods are ordered by start date rather than as text, so ISO weeks such as
+  `2020W2` and `2020W10`, or the two ISO forms mixed, stay in calendar order.
+- With `lr_schedule: warmup_cosine` and `early_stopping: true` together, the early-stopping
+  probe's schedule is sized by the full series. Upstream sizes it by the probe's own windows.
+
+## Reference check
+
+With the same options and data, the forecasts are identical to those of the two models this one
+replaces, [auto_regressive_weekly_v2](https://github.com/chap-models/auto_regressive_weekly_v2)
+(with the weekly values above) and
+[auto_regressive_monthly_v2](https://github.com/chap-models/auto_regressive_monthly_v2) (with the
+defaults). `tools/compare_reference.py` runs a reference repo's own scripts in its locked
+environment and this model's modules on the same data, and requires identical prediction CSVs;
+`tools/api_compare.py` does the same through the service API. CI runs `make compare`.
 
 ```bash
-make compare       # both period types, fast epochs (REF_WEEKLY / REF_MONTHLY point at the v2 checkouts)
-make compare-full  # at the shipped epoch counts
+make compare       # fast epochs (REF_WEEKLY / REF_MONTHLY point at the reference checkouts)
+make compare-full  # full epoch counts
 make test-api      # through the Docker image's API
 ```
 
-Every weekly case starts from the weekly v2 values (`WEEKLY_V2_OPTIONS`), on both sides. The
-cases cover the defaults, single and multi-member ensembles, an additional covariate,
-architecture variants (simple cell, stacked layers, recursive decoding), regularisation, the
-`warmup_cosine` schedule with and without early stopping (weekly) and short-history context
-clamping (weekly). CI runs `make compare` against both v2 repos' `main`.
-
-Identical output depends on the numerical stack. `uv.lock` pins the same versions the v2 models
-lock (jax/jaxlib 0.10.1, flax 0.12.7, optax 0.2.8, numpy 2.4.6, pandas 3.0.3, scipy 1.17.1).
-Upgrading them may change forecasts slightly, for both this model and the v2 models.
-
-Differences from the v2 models that do not affect matching runs:
-
-- Weekly runs that leave the four options above on their defaults get the monthly v2 values, not
-  the weekly v2 ones.
-
-- The library classes moved package (`chap_auto_regressive` to `chapkit_deep_auto_regressive.core`),
-  and saved models pickle the scaler's class path, so v2 model files do not load here. Retrain.
-- The weekly v2 `scripts/export_weights.py` (export for the Rust inference port) and
-  `scripts/verify_eval.py` are not carried over.
+Identical output depends on the numerical stack, which `uv.lock` pins (jax/jaxlib 0.10.1, flax
+0.12.7, optax 0.2.8, numpy 2.4.6, pandas 3.0.3, scipy 1.17.1).
 
 ## Configurations
 
@@ -174,6 +152,7 @@ Differences from the v2 models that do not affect matching runs:
 `AR_N_ITER` overrides the epoch count regardless of configuration. The tests and the service
 tests use it (`AR_N_ITER=30`) for a fast pass.
 
+
 ## Credits
 
-Model by Knut Rand, HISP Centre, University of Oslo. AGPLv3, as the v2 models.
+Model by Knut Rand, HISP Centre, University of Oslo. AGPLv3.

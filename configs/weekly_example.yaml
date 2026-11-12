@@ -1,4 +1,4 @@
-# Example CHAP model configuration for the weekly AR model.
+# Example Chap model configuration for weekly data, with the recommended weekly values.
 #
 # Pass it to a run with `chap eval --model-configuration-yaml configs/example.yaml ...`.
 # Both keys are optional:
@@ -14,7 +14,7 @@ user_option_values:
   n_iter: 1000
   learning_rate: 0.00001
   # Optional: warm up to a peak rate, then cosine-decay to learning_rate over n_iter.
-  # On large weekly data (issue #2), peak 1e-3 with n_iter 150 matched the
+  # On large weekly data, peak 1e-3 with n_iter 150 matched the
   # constant-1e-5 / 1000-epoch score at about 6.7x fewer epochs.
   # lr_schedule: warmup_cosine
   # peak_learning_rate: 0.001

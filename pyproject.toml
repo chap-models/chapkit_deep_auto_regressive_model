@@ -57,7 +57,7 @@ convention = "google"
 "src/chapkit_deep_auto_regressive/core/**/*.py" = ["D", "S"]
 # Tests assert, run subprocesses and unpickle their own fixtures; fine outside product code.
 "tests/**/*.py" = ["D", "S101", "S301", "S603", "S607"]
-# The parity tools run the reference models and this one as subprocesses.
+# The comparison tools run the reference models and this one as subprocesses.
 "tools/**/*.py" = ["S603", "S607"]
 "scripts/**/*.py" = ["D", "S"]
 "**/__init__.py" = ["D104"]

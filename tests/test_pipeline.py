@@ -1,7 +1,7 @@
 """Train and predict through the train and predict modules on the bundled weekly and monthly data.
 
-Fast pass (AR_N_ITER=30, one ensemble member). Parity with the v2 models is
-checked separately by tools/compare_v2.py, which needs their checkouts.
+Fast pass (AR_N_ITER=30, one ensemble member). Forecasts are checked against the
+reference models separately by tools/compare_reference.py, which needs their checkouts.
 """
 
 import os
@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from chapkit_deep_auto_regressive.model import WEEKLY_V2_OPTIONS
+from chapkit_deep_auto_regressive.model import WEEKLY_OPTIONS
 
 REPO = Path(__file__).resolve().parent.parent
 DATA = {
@@ -121,11 +121,11 @@ def test_undeclared_covariate_column_is_not_used(tmp_path: Path) -> None:
 
 
 def test_weekly_context_is_clamped_to_short_history(tmp_path: Path) -> None:
-    # 40 weeks is too short for the weekly v2 model's 52-week context plus its
+    # 40 weeks is too short for the recommended 52-week context plus the
     # 12-week horizon, so train.py shrinks the context instead of failing.
     df = pd.read_csv(DATA["week"])
     short = df.loc[df["time_period"].isin(sorted(df["time_period"].unique())[-40:])].reset_index(drop=True)
-    _assert_forecast(_train_and_predict(tmp_path, "week", short, **WEEKLY_V2_OPTIONS), short, "week")
+    _assert_forecast(_train_and_predict(tmp_path, "week", short, **WEEKLY_OPTIONS), short, "week")
 
 
 def test_warmup_cosine_schedule_trains(tmp_path: Path) -> None:

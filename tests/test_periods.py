@@ -8,7 +8,7 @@ import yaml
 from chapkit_deep_auto_regressive.model import (
     DEFAULTS,
     MODEL_OPTIONS,
-    WEEKLY_V2_OPTIONS,
+    WEEKLY_OPTIONS,
     build_model,
     detect_period_type,
     resolve_options,
@@ -35,22 +35,22 @@ def test_detect_period_type_rejects_unknown_or_mixed(periods: list[str]) -> None
         detect_period_type(periods)
 
 
-def test_defaults_match_auto_regressive_monthly_v2(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AR_N_ITER", raising=False)
     model = build_model()
     assert (model.context_length, model.prediction_length, model.learning_rate, model.n_iter) == (36, 3, 1e-3, 400)
     assert model.early_stopping is False
 
 
-def test_weekly_v2_options_reproduce_auto_regressive_weekly_v2(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_weekly_options(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AR_N_ITER", raising=False)
-    model = build_model(WEEKLY_V2_OPTIONS)
+    model = build_model(WEEKLY_OPTIONS)
     assert (model.context_length, model.prediction_length, model.learning_rate, model.n_iter) == (52, 12, 1e-5, 1000)
 
 
-def test_weekly_example_config_sets_the_weekly_v2_values() -> None:
+def test_weekly_example_config_sets_the_weekly_options() -> None:
     config = yaml.safe_load((Path(__file__).parent.parent / "configs/weekly_example.yaml").read_text())
-    assert {key: config["user_option_values"][key] for key in WEEKLY_V2_OPTIONS} == WEEKLY_V2_OPTIONS
+    assert {key: config["user_option_values"][key] for key in WEEKLY_OPTIONS} == WEEKLY_OPTIONS
 
 
 def test_none_takes_the_default_and_explicit_values_win() -> None:
@@ -82,7 +82,7 @@ def test_service_config_declares_every_model_option() -> None:
 
 def test_service_config_defaults_are_the_model_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     # The config defaults Chap shows, passed through as user_option_values, must
-    # build the same model as no options at all (the monthly v2 model).
+    # build the same model as no options at all.
     monkeypatch.delenv("AR_N_ITER", raising=False)
     options = AutoRegressiveConfig().model_dump(exclude={"prediction_periods", "additional_continuous_covariates"})
     from_config, plain = build_model(options), build_model()
@@ -92,8 +92,8 @@ def test_service_config_defaults_are_the_model_defaults(monkeypatch: pytest.Monk
 
 
 def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged() -> None:
-    # ISO weeks are a local addition to the vendored library; the formats the v2
-    # models used must parse exactly as before.
+    # ISO weeks are a local addition to the vendored library; the formats it
+    # already read must parse exactly as upstream.
     from datetime import datetime
 
     from chapkit_deep_auto_regressive.core.transforms import period_start_date

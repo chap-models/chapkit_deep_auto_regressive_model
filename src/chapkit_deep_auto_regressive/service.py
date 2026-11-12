@@ -1,16 +1,13 @@
 """Chapkit service for the deep auto-regressive (RNN) model, for weekly and monthly data.
 
-Merges ``auto_regressive_weekly_v2`` and ``auto_regressive_monthly_v2`` into one
-model, with the shared ``chap_auto_regressive`` library vendored in as
-``chapkit_deep_auto_regressive.core``. With the same options and the same data, the
-forecasts match the two models it replaces.
+The shared ``chap_auto_regressive`` library is vendored in as
+``chapkit_deep_auto_regressive.core``.
 
 Design notes:
 
-- One set of defaults serves both period types: the monthly v2 model's. Weekly
-  runs reproduce the weekly v2 model when they set its values for
-  ``context_length``, ``prediction_length``, ``learning_rate`` and ``n_iter``
-  (``model.WEEKLY_V2_OPTIONS``; see configs/weekly_example.yaml).
+- One set of defaults serves both period types. ``context_length``,
+  ``prediction_length``, ``learning_rate`` and ``n_iter`` have recommended
+  weekly values (``model.WEEKLY_OPTIONS``; see configs/weekly_example.yaml).
 - The train and predict modules are the same commands the MLproject runs. The
   runner writes config.yml in chap-core's layout (``config_format="chap_core"``),
   so they read ``user_option_values`` whichever way they are started.
@@ -32,29 +29,31 @@ from pydantic import Field, HttpUrl
 class AutoRegressiveConfig(BaseConfig):
     """Tunable knobs of the deep auto-regressive model, as exposed to Chap and the Modeling App."""
 
-    # ---- Context, horizon and training length (monthly v2 defaults; weekly v2 values in the descriptions) ----
+    # ---- Context, horizon and training length (recommended weekly values in the descriptions) ----
     context_length: int = Field(
         default=36,
         gt=0,
-        description="Periods of history read as context. The weekly v2 model used 52.",
+        description="Periods of history read as context. For weekly data, 52 is recommended.",
     )
     prediction_length: int = Field(
         default=3,
         gt=0,
         description=(
             "Forecast horizon the model is trained for, which caps how far it can predict. Raised to the requested "
-            "prediction_periods when that is longer. The weekly v2 model used 12."
+            "prediction_periods when that is longer. For weekly data, 12 is recommended."
         ),
     )
     learning_rate: float = Field(
         default=1e-3,
         gt=0.0,
-        description="Adam learning rate (with a schedule, its start and end rate). The weekly v2 model used 1e-5.",
+        description=(
+            "Adam learning rate (with a schedule, its start and end rate). For weekly data, 1e-5 is recommended."
+        ),
     )
     n_iter: int = Field(
         default=400,
         gt=0,
-        description="Training epochs per ensemble member. The weekly v2 model used 1000.",
+        description="Training epochs per ensemble member. For weekly data, 1000 is recommended.",
     )
 
     # ---- Training ----
@@ -112,10 +111,8 @@ info = MLServiceInfo(
     version="0.1.0",
     description=(
         "An experimental deep learning model: an ensemble of recurrent neural networks that forecasts disease "
-        "cases from their own history and climate covariates. Supports weekly and monthly data. The defaults "
-        "are the monthly v2 model's; set context_length 52, prediction_length 12, learning_rate 1e-5 and "
-        "n_iter 1000 to reproduce the weekly v2 model. Replaces the Weekly and Monthly Deep Auto Regressive "
-        "v2 models."
+        "cases from their own history and climate covariates. Supports weekly and monthly data. For weekly "
+        "data, context_length 52, prediction_length 12, learning_rate 1e-5 and n_iter 1000 are recommended."
     ),
     model_metadata=ModelMetadata(
         author="Knut Rand",

@@ -1,12 +1,12 @@
-"""Compare this model's forecasts with the auto_regressive_{weekly,monthly}_v2 model it replaces.
+"""Compare this model's forecasts with a reference model (auto_regressive_{weekly,monthly}_v2).
 
 Runs the reference repo's own train.py/predict.py (in its own locked environment,
 via ``uv run``) and this repo's train/predict modules on the same data and the same
 model configuration, then compares the prediction CSVs value by value.
 
 Usage:
-    uv run python tools/compare_v2.py --period week --reference ../auto_regressive_weekly_v2
-    uv run python tools/compare_v2.py --period month --reference ../auto_regressive_monthly_v2
+    uv run python tools/compare_reference.py --period week --reference ../auto_regressive_weekly_v2
+    uv run python tools/compare_reference.py --period month --reference ../auto_regressive_monthly_v2
 
 By default every case runs with ``AR_N_ITER=30`` to keep it fast (the code path
 is the same at any epoch count); ``--full`` drops the override so the defaults
@@ -25,12 +25,12 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from chapkit_deep_auto_regressive.model import WEEKLY_V2_OPTIONS
+from chapkit_deep_auto_regressive.model import WEEKLY_OPTIONS
 
-#: Options every case starts from, per period type. The defaults are the monthly
-#: v2 model's, so weekly cases set the weekly v2 values, as a weekly run must to
-#: reproduce that model. Both sides get the same options.
-BASE_OPTIONS: dict[str, dict[str, Any]] = {"week": WEEKLY_V2_OPTIONS, "month": {}}
+#: Options every case starts from, per period type: weekly cases use the
+#: recommended weekly values, which are the weekly reference's defaults. Both
+#: sides get the same options.
+BASE_OPTIONS: dict[str, dict[str, Any]] = {"week": WEEKLY_OPTIONS, "month": {}}
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -83,7 +83,7 @@ def _data(period: str, cut: str, with_covariate: bool) -> pd.DataFrame:
 def _run(repo: Path, workdir: Path, env: dict[str, str], tag: str) -> pd.DataFrame:
     """Train and predict with ``repo``'s entry points in its own uv environment.
 
-    The v2 references run ``train.py``/``predict.py`` from their root; this repo
+    The references run ``train.py``/``predict.py`` from their root; this repo
     runs the ``chapkit_deep_auto_regressive.train``/``.predict`` modules.
     """
     uv = ["uv", "run", "--frozen", "--project", str(repo), "python"]
@@ -140,7 +140,7 @@ def compare(period: str, reference: Path, full: bool, only: list[str] | None) ->
             (workdir / "config.yml").write_text(yaml.safe_dump(config))
 
             old = _run(reference, workdir, env, "reference")
-            new = _run(REPO, workdir, env, "merged")
+            new = _run(REPO, workdir, env, "this model")
 
         same_shape = list(old.columns) == list(new.columns) and old.shape == new.shape
         same_keys = same_shape and old[["time_period", "location"]].equals(new[["time_period", "location"]])
@@ -158,7 +158,7 @@ def main() -> None:
     """Parse arguments and run the comparison."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--period", choices=["week", "month"], required=True)
-    parser.add_argument("--reference", type=Path, required=True, help="checkout of the v2 repo to compare with")
+    parser.add_argument("--reference", type=Path, required=True, help="checkout of the reference repo to compare with")
     parser.add_argument("--full", action="store_true", help="use the shipped epoch counts (slow)")
     parser.add_argument("--case", action="append", help="run only this case (repeatable)")
     args = parser.parse_args()

@@ -16,10 +16,8 @@ max_prediction_periods: 12
 meta_data:
   display_name: Deep Auto Regressive (weekly and monthly)
   description: 'An experimental deep learning model: an ensemble of recurrent neural networks that forecasts
-    disease cases from their own history and climate covariates. Supports weekly and monthly data. The
-    defaults are the monthly v2 model''s; set context_length 52, prediction_length 12, learning_rate 1e-5
-    and n_iter 1000 to reproduce the weekly v2 model. Replaces the Weekly and Monthly Deep Auto Regressive
-    v2 models.'
+    disease cases from their own history and climate covariates. Supports weekly and monthly data. For
+    weekly data, context_length 52, prediction_length 12, learning_rate 1e-5 and n_iter 1000 are recommended.'
   author: Knut Rand
   author_assessed_status: red
   contact_email: knut.rand@dhis2.org
@@ -31,24 +29,24 @@ user_options:
     type: integer
     exclusiveMinimum: 0
     default: 36
-    description: Periods of history read as context. The weekly v2 model used 52.
+    description: Periods of history read as context. For weekly data, 52 is recommended.
   prediction_length:
     type: integer
     exclusiveMinimum: 0
     default: 3
     description: Forecast horizon the model is trained for, which caps how far it can predict. Raised
-      to the requested prediction_periods when that is longer. The weekly v2 model used 12.
+      to the requested prediction_periods when that is longer. For weekly data, 12 is recommended.
   learning_rate:
     type: number
     exclusiveMinimum: 0.0
     default: 0.001
-    description: Adam learning rate (with a schedule, its start and end rate). The weekly v2 model used
-      1e-5.
+    description: Adam learning rate (with a schedule, its start and end rate). For weekly data, 1e-5 is
+      recommended.
   n_iter:
     type: integer
     exclusiveMinimum: 0
     default: 400
-    description: Training epochs per ensemble member. The weekly v2 model used 1000.
+    description: Training epochs per ensemble member. For weekly data, 1000 is recommended.
   n_ensemble:
     type: integer
     default: 5

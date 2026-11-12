@@ -409,7 +409,7 @@ class AutoRegressiveModel:
 
         The schedule spans ``n_iter`` epochs of ``steps_per_epoch`` steps. Both
         an early-stopping probe and its refit get the schedule sized by the full
-        series (local change, see ``core/__init__.py``), as in the weekly v2 model.
+        series (local change, see ``core/__init__.py``).
 
         Args:
             steps_per_epoch: Optimizer steps per epoch (one per training window).
@@ -583,8 +583,8 @@ class AutoRegressiveModel:
                     self.model,
                     self.n_iter,
                     # Local change (see core/__init__.py): the probe's schedule is
-                    # sized by the full series, as in the weekly v2 model, so runs
-                    # with a schedule and early stopping keep their v2 forecasts.
+                    # sized by the full series, so the probe and the refit follow
+                    # the same schedule.
                     learning_rate=self.learning_rate_for(len(data_set)),
                     validation_loader=validation_loader,
                     seed=seed,

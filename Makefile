@@ -10,7 +10,7 @@ AR_N_ITER  ?= 30
 # chapkit test data: 100 training and 60 prediction periods x 5 locations, enough
 # for the default contexts (36 months, 52 weeks); chapkit's defaults are shorter.
 CONTRACT_ARGS ?= --rows 500 --predict-rows 300 --timeout 600 --verbose
-# Checkouts of the models this one replaces, for the parity comparisons.
+# Checkouts of the reference models for the forecast comparisons (see README, Reference check).
 REF_WEEKLY  ?= ../auto_regressive_weekly_v2
 REF_MONTHLY ?= ../auto_regressive_monthly_v2
 
@@ -23,13 +23,13 @@ help:
 	@echo "  mlproject       Regenerate MLproject from main.py"
 	@echo "  test            Unit, library and train/predict pipeline tests"
 	@echo "  build-package   Build the sdist and wheel (uv build)"
-	@echo "  compare         Compare forecasts with the v2 models (fast epochs; needs REF_WEEKLY/REF_MONTHLY)"
+	@echo "  compare         Compare forecasts with the reference models (fast epochs; needs REF_WEEKLY/REF_MONTHLY)"
 	@echo "  compare-full    Same, at the shipped epoch counts (slow)"
 	@echo "  build           Build docker image ($(IMAGE))"
 	@echo "  run             Build and run the service on :8000"
 	@echo "  run-ghcr        Pull and run the prebuilt GHCR image on :8000"
 	@echo "  test-contract   chapkit's own end-to-end contract test against the image, monthly and weekly"
-	@echo "  test-api        Train + predict over the API, compared with the v2 models"
+	@echo "  test-api        Train + predict over the API, compared with the reference models"
 	@echo "  test-mlproject  test-contract against chapkit mlproject run (the MLproject, not main.py)"
 	@echo "  clean           Remove local image, caches and test outputs"
 
@@ -58,12 +58,12 @@ build-package:
 	@uv build
 
 compare:
-	@uv run python tools/compare_v2.py --period week --reference $(REF_WEEKLY)
-	@uv run python tools/compare_v2.py --period month --reference $(REF_MONTHLY)
+	@uv run python tools/compare_reference.py --period week --reference $(REF_WEEKLY)
+	@uv run python tools/compare_reference.py --period month --reference $(REF_MONTHLY)
 
 compare-full:
-	@uv run python tools/compare_v2.py --period week --reference $(REF_WEEKLY) --full
-	@uv run python tools/compare_v2.py --period month --reference $(REF_MONTHLY) --full
+	@uv run python tools/compare_reference.py --period week --reference $(REF_WEEKLY) --full
+	@uv run python tools/compare_reference.py --period month --reference $(REF_MONTHLY) --full
 
 build:
 	@echo ">>> Building $(IMAGE)"
