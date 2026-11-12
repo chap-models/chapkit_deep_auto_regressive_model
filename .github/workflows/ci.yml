@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
       - name: Sync dependencies
@@ -34,7 +34,7 @@ jobs:
           git clone --depth 1 https://github.com/chap-models/auto_regressive_weekly_v2.git ../auto_regressive_weekly_v2
           git clone --depth 1 https://github.com/chap-models/auto_regressive_monthly_v2.git ../auto_regressive_monthly_v2
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
       - name: Sync dependencies
@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
       - name: Sync dependencies
