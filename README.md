@@ -138,7 +138,10 @@ to one case; on Linux x86_64 the forecast means move by a median of 3.4% (at mos
 30-epoch CI comparison. That is well below the shift a different random seed gives in the same
 case (median 18%, at most 75%), so `tools/compare_reference.py` allows these two cases to differ
 as long as the median shift stays within 15% and the largest within 30%; every other case must
-match exactly. `tools/compare_reference.py` runs a reference repo's own scripts in its locked
+match exactly. The tolerance has two limits. The shift depends on the processor of the
+machine running the check, and one emulated x86_64 run reached a median of 13%, close to the 15%
+bound, so the check can fail on some CI runners. And because the bound is near the seed-to-seed
+shift, it would not catch a small real regression in these two cases. `tools/compare_reference.py` runs a reference repo's own scripts in its locked
 environment and this model's modules on the same data, and requires identical prediction CSVs;
 `tools/api_compare.py` does the same through the service API. CI runs `make compare`.
 
