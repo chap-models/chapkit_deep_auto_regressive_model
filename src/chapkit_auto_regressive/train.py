@@ -76,7 +76,7 @@ def main() -> None:
     data = pd.read_csv(args.train_data)
     config = _read_config(args.config)
     period_type = detect_period_type(data["time_period"])
-    model = build_model(period_type, config.user_option_values or {}, prediction_periods=config.prediction_periods)
+    model = build_model(config.user_option_values or {}, prediction_periods=config.prediction_periods)
     logger.info(
         "Period type %s: context_length=%d, prediction_length=%d, learning_rate=%g, n_iter=%d",
         period_type,

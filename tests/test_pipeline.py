@@ -16,6 +16,8 @@ import pandas as pd
 import pytest
 import yaml
 
+from chapkit_auto_regressive.model import WEEKLY_V2_OPTIONS
+
 REPO = Path(__file__).resolve().parent.parent
 DATA = {
     "week": REPO / "example_data/weekly/training_data.csv",
@@ -31,7 +33,13 @@ def _train_and_predict(
     config = tmp_path / "config.yml"
     config.write_text(
         yaml.safe_dump(
-            {"additional_continuous_covariates": list(covariates), "user_option_values": {"n_ensemble": 1, **options}}
+            {
+                "additional_continuous_covariates": list(covariates),
+                # As Chap does: the horizon the run asks for. With the (monthly)
+                # defaults, a weekly run's trained horizon is raised to it.
+                "prediction_periods": HORIZON[period],
+                "user_option_values": {"n_ensemble": 1, **options},
+            }
         )
     )
     data, model, out = tmp_path / "train.csv", tmp_path / "model", tmp_path / "predictions.csv"
@@ -111,11 +119,11 @@ def test_undeclared_covariate_column_is_not_used(tmp_path: Path) -> None:
 
 
 def test_weekly_context_is_clamped_to_short_history(tmp_path: Path) -> None:
-    # 40 weeks is too short for the 52-week context plus the 12-week horizon, so
-    # train.py shrinks the context instead of failing.
+    # 40 weeks is too short for the weekly v2 model's 52-week context plus its
+    # 12-week horizon, so train.py shrinks the context instead of failing.
     df = pd.read_csv(DATA["week"])
     short = df.loc[df["time_period"].isin(sorted(df["time_period"].unique())[-40:])].reset_index(drop=True)
-    _assert_forecast(_train_and_predict(tmp_path, "week", short), short, "week")
+    _assert_forecast(_train_and_predict(tmp_path, "week", short, **WEEKLY_V2_OPTIONS), short, "week")
 
 
 def test_warmup_cosine_schedule_trains(tmp_path: Path) -> None:

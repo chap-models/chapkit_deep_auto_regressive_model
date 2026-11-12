@@ -23,57 +23,45 @@ from the package name and three local changes:
   sizes it by the probe's own windows, which changes forecasts.
 
 Given the same options and data, the forecasts are identical to the two v2 models'
-(see [Parity with the v2 models](#parity-with-the-v2-models)).
+(see [Parity with the v2 models](#parity-with-the-v2-models)). The defaults are the monthly
+v2 model's, so weekly runs set the weekly v2 values to match that model
+(see [Weekly and monthly data](#weekly-and-monthly-data)).
 
 ## Weekly and monthly data
 
-The period type is not configured. It is read from the training data's `time_period` column
-(`YYYY-MM` is monthly; a `start/end` date range or an ISO week, `YYYYWww` / `YYYY-Www`, is weekly), and it picks the defaults
-for the four knobs that depend on it. These are the v2 models' defaults:
+Both period types use the same options and **one set of defaults: the monthly v2 model's**. The
+period type is not configured. Weekly (`start/end` date range or ISO week, `YYYYWww` /
+`YYYY-Www`) and monthly (`YYYY-MM`) data are both accepted and checked when training starts.
 
-| option | weekly | monthly |
+Four options had different defaults in the two v2 models:
+
+| option | default (monthly v2) | weekly v2 |
 | --- | --- | --- |
-| `context_length` (periods of history read) | 52 | 36 |
-| `prediction_length` (trained horizon) | 12 | 3 |
-| `learning_rate` | 1e-5 | 1e-3 |
-| `n_iter` (epochs per ensemble member) | 1000 | 400 |
+| `context_length` (periods of history read) | 36 | 52 |
+| `prediction_length` (trained horizon) | 3 | 12 |
+| `learning_rate` | 1e-3 | 1e-5 |
+| `n_iter` (epochs per ensemble member) | 400 | 1000 |
 
-Each of these defaults to `0`, which means "use the default for the data's period type". Any
-other value is used as given. When `prediction_length` is left on `0` and a run asks for a longer
-horizon (`prediction_periods`) than the period default, the trained horizon is raised to match.
-The v2 models would have rejected that run instead.
+- **Monthly runs** with the defaults give the same forecasts as `auto_regressive_monthly_v2`.
+- **Weekly runs** give the same forecasts as `auto_regressive_weekly_v2` only when they set the
+  weekly v2 values. [`configs/weekly_example.yaml`](configs/weekly_example.yaml) does, and
+  `chapkit_auto_regressive.model.WEEKLY_V2_OPTIONS` holds them. With the defaults, a weekly
+  run reads 36 weeks of context and trains at 1e-3 for 400 epochs, so its forecasts differ from
+  the weekly v2 model's.
 
-Everything else has one default for both period types: GRU cells, a 5-member deep ensemble,
-dropout 0.2, a constant learning rate, and early stopping off. The weekly v2 model's optional
-`warmup_cosine` learning-rate schedule is now part of the vendored library, so monthly runs can
-use it too.
+When a run asks for a longer horizon (`prediction_periods`) than `prediction_length`, the trained
+horizon is raised to match, because predict cannot reach past it. The v2 models rejected such
+runs instead. This is what lets a weekly run with the defaults ask Chap for 12 weeks.
+
+Everything else has one default for both period types, as before: GRU cells, a 5-member deep
+ensemble, dropout 0.2, a constant learning rate, and early stopping off. The weekly v2 model's
+optional `warmup_cosine` learning-rate schedule is now part of the vendored library, so monthly
+runs can use it too.
 
 Covariates: `rainfall`, `mean_temperature` and `population` are required. Covariates named in
 `additional_continuous_covariates` are fed to the network as extra features. Other columns in the
 data are ignored. The architecture, window lengths and covariates are saved with the trained
 model, so predict needs no configuration.
-
-## Open questions
-
-**How should the period-dependent defaults show in Chap?** The weekly and monthly v2 models use
-different defaults for `context_length`, `prediction_length`, `learning_rate` and `n_iter`. The
-service config and the MLproject list each option once with a single default, and Chap shows
-that default to users. To keep forecasts the same as today, the merged model has to choose the
-defaults from the data's period type. As a result, the default Chap shows is not the value that
-actually runs.
-
-The current choice is the `0` = "period default" sentinel above. It keeps every option a flat
-scalar that Chap and the Modeling App render as a form control, and the descriptions name both
-real defaults. The cost is that users see `0` rather than a number. Alternatives:
-
-- Nullable options (`null` = period default): clearer in the schema, but chap-core's legacy
-  option handling assumes one scalar `type` per option, and the Modeling App may fall back to
-  raw-JSON editing.
-- Weekly and monthly as two separately registered services from this one codebase, each with
-  real defaults: what Chap shows matches what runs, but there are two models to register again.
-- Pick one set of defaults: simplest, but the forecasts for the other period type change.
-
-This needs a decision before the config is finalised.
 
 ## Known issues
 
@@ -156,17 +144,20 @@ make compare-full  # at the shipped epoch counts
 make test-api      # through the Docker image's API
 ```
 
-Cases cover the defaults, single and multi-member ensembles, an additional covariate,
+Every weekly case starts from the weekly v2 values (`WEEKLY_V2_OPTIONS`), on both sides. The
+cases cover the defaults, single and multi-member ensembles, an additional covariate,
 architecture variants (simple cell, stacked layers, recursive decoding), regularisation, the
 `warmup_cosine` schedule with and without early stopping (weekly) and short-history context
-clamping (weekly). CI runs
-`make compare` against both v2 repos' `main`.
+clamping (weekly). CI runs `make compare` against both v2 repos' `main`.
 
 Identical output depends on the numerical stack. `uv.lock` pins the same versions the v2 models
 lock (jax/jaxlib 0.10.1, flax 0.12.7, optax 0.2.8, numpy 2.4.6, pandas 3.0.3, scipy 1.17.1).
 Upgrading them may change forecasts slightly, for both this model and the v2 models.
 
 Differences from the v2 models that do not affect matching runs:
+
+- Weekly runs that leave the four options above on their defaults get the monthly v2 values, not
+  the weekly v2 ones.
 
 - The library classes moved package (`chap_auto_regressive` to `chapkit_auto_regressive.core`),
   and saved models pickle the scaler's class path, so v2 model files do not load here. Retrain.

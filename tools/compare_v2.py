@@ -25,6 +25,13 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from chapkit_auto_regressive.model import WEEKLY_V2_OPTIONS
+
+#: Options every case starts from, per period type. The defaults are the monthly
+#: v2 model's, so weekly cases set the weekly v2 values, as a weekly run must to
+#: reproduce that model. Both sides get the same options.
+BASE_OPTIONS: dict[str, dict[str, Any]] = {"week": WEEKLY_V2_OPTIONS, "month": {}}
+
 REPO = Path(__file__).resolve().parent.parent
 
 # Each case: (name, additional covariates, user_option_values, how to cut the data).
@@ -126,7 +133,10 @@ def compare(period: str, reference: Path, full: bool, only: list[str] | None) ->
                 ignore_index=True,
             )
             future.to_csv(workdir / "future.csv", index=False)
-            config = {"additional_continuous_covariates": covariates, "user_option_values": options}
+            config = {
+                "additional_continuous_covariates": covariates,
+                "user_option_values": {**BASE_OPTIONS[period], **options},
+            }
             (workdir / "config.yml").write_text(yaml.safe_dump(config))
 
             old = _run(reference, workdir, env, "reference")

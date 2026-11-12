@@ -7,12 +7,10 @@ forecasts match the two models it replaces.
 
 Design notes:
 
-- The period type is not configured. The train module reads it from the training
-  data's ``time_period`` column, and it picks the defaults for ``context_length``,
-  ``prediction_length``, ``learning_rate`` and ``n_iter``. Those four fields
-  default to 0, meaning "the period default", which keeps every option a flat
-  scalar that Chap and the Modeling App render as a form control. See the open
-  question in the README about how these defaults show in Chap.
+- One set of defaults serves both period types: the monthly v2 model's. Weekly
+  runs reproduce the weekly v2 model when they set its values for
+  ``context_length``, ``prediction_length``, ``learning_rate`` and ``n_iter``
+  (``model.WEEKLY_V2_OPTIONS``; see configs/weekly_example.yaml).
 - The train and predict modules are the same commands the MLproject runs. The
   runner writes config.yml in chap-core's layout (``config_format="chap_core"``),
   so they read ``user_option_values`` whichever way they are started.
@@ -34,32 +32,29 @@ from pydantic import Field, HttpUrl
 class AutoRegressiveConfig(BaseConfig):
     """Tunable knobs of the deep auto-regressive model, as exposed to Chap and the Modeling App."""
 
-    # ---- Period-dependent (0 = the default for the data's period type) ----
+    # ---- Context, horizon and training length (monthly v2 defaults; weekly v2 values in the descriptions) ----
     context_length: int = Field(
-        default=0,
-        ge=0,
-        description="Periods of history read as context. 0 uses the period default: 52 weeks or 36 months.",
+        default=36,
+        gt=0,
+        description="Periods of history read as context. The weekly v2 model used 52.",
     )
     prediction_length: int = Field(
-        default=0,
-        ge=0,
+        default=3,
+        gt=0,
         description=(
-            "Forecast horizon the model is trained for, which caps how far it can predict. 0 uses the period "
-            "default (12 weeks or 3 months), raised to the requested prediction_periods when that is longer."
+            "Forecast horizon the model is trained for, which caps how far it can predict. Raised to the requested "
+            "prediction_periods when that is longer. The weekly v2 model used 12."
         ),
     )
     learning_rate: float = Field(
-        default=0.0,
-        ge=0.0,
-        description=(
-            "Adam learning rate (with a schedule, its start and end rate). "
-            "0 uses the period default: 1e-5 for weekly data, 1e-3 for monthly."
-        ),
+        default=1e-3,
+        gt=0.0,
+        description="Adam learning rate (with a schedule, its start and end rate). The weekly v2 model used 1e-5.",
     )
     n_iter: int = Field(
-        default=0,
-        ge=0,
-        description="Training epochs per ensemble member. 0 uses the period default: 1000 weekly, 400 monthly.",
+        default=400,
+        gt=0,
+        description="Training epochs per ensemble member. The weekly v2 model used 1000.",
     )
 
     # ---- Training ----

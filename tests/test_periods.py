@@ -1,13 +1,14 @@
-"""Unit tests for the period-aware model builder and the service config."""
+"""Unit tests for period handling, the model builder and the service config."""
 
 from pathlib import Path
 
 import pytest
+import yaml
 
 from chapkit_auto_regressive.model import (
-    AUTO,
+    DEFAULTS,
     MODEL_OPTIONS,
-    PERIOD_DEFAULTS,
+    WEEKLY_V2_OPTIONS,
     build_model,
     detect_period_type,
     resolve_options,
@@ -34,36 +35,40 @@ def test_detect_period_type_rejects_unknown_or_mixed(periods: list[str]) -> None
         detect_period_type(periods)
 
 
-def test_weekly_defaults_match_auto_regressive_weekly_v2(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_defaults_match_auto_regressive_monthly_v2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AR_N_ITER", raising=False)
-    model = build_model("week")
-    assert (model.context_length, model.prediction_length, model.learning_rate, model.n_iter) == (52, 12, 1e-5, 1000)
-    assert model.early_stopping is False
-
-
-def test_monthly_defaults_match_auto_regressive_monthly_v2(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AR_N_ITER", raising=False)
-    model = build_model("month")
+    model = build_model()
     assert (model.context_length, model.prediction_length, model.learning_rate, model.n_iter) == (36, 3, 1e-3, 400)
     assert model.early_stopping is False
 
 
-def test_auto_and_none_take_the_period_default_and_explicit_values_win() -> None:
-    options = {"context_length": AUTO, "learning_rate": None, "n_iter": 50, "prediction_length": 6}
-    resolved = resolve_options("week", options)
-    assert resolved["context_length"] == PERIOD_DEFAULTS["week"]["context_length"]
-    assert resolved["learning_rate"] == PERIOD_DEFAULTS["week"]["learning_rate"]
+def test_weekly_v2_options_reproduce_auto_regressive_weekly_v2(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AR_N_ITER", raising=False)
+    model = build_model(WEEKLY_V2_OPTIONS)
+    assert (model.context_length, model.prediction_length, model.learning_rate, model.n_iter) == (52, 12, 1e-5, 1000)
+
+
+def test_weekly_example_config_sets_the_weekly_v2_values() -> None:
+    config = yaml.safe_load((Path(__file__).parent.parent / "configs/weekly_example.yaml").read_text())
+    assert {key: config["user_option_values"][key] for key in WEEKLY_V2_OPTIONS} == WEEKLY_V2_OPTIONS
+
+
+def test_none_takes_the_default_and_explicit_values_win() -> None:
+    resolved = resolve_options({"context_length": None, "n_iter": 50, "prediction_length": 6})
+    assert resolved["context_length"] == DEFAULTS["context_length"]
+    assert resolved["learning_rate"] == DEFAULTS["learning_rate"]
     assert (resolved["n_iter"], resolved["prediction_length"]) == (50, 6)
 
 
-def test_auto_horizon_is_raised_to_the_requested_prediction_periods() -> None:
-    assert resolve_options("month", {}, prediction_periods=6)["prediction_length"] == 6
-    assert resolve_options("month", {}, prediction_periods=2)["prediction_length"] == 3
-    assert resolve_options("month", {"prediction_length": 2}, prediction_periods=6)["prediction_length"] == 2
+def test_horizon_is_raised_to_the_requested_prediction_periods() -> None:
+    assert resolve_options({}, prediction_periods=6)["prediction_length"] == 6
+    assert resolve_options({}, prediction_periods=2)["prediction_length"] == 3
+    assert resolve_options({"prediction_length": 2}, prediction_periods=6)["prediction_length"] == 6
+    assert resolve_options({"prediction_length": 12}, prediction_periods=6)["prediction_length"] == 12
 
 
 def test_build_model_applies_user_options_and_ignores_unknown() -> None:
-    model = build_model("month", {"context_length": 18, "n_ensemble": 3, "cell": "simple", "bogus_option": 1})
+    model = build_model({"context_length": 18, "n_ensemble": 3, "cell": "simple", "bogus_option": 1})
     assert (model.context_length, model.n_ensemble, model.cell) == (18, 3, "simple")
     assert not hasattr(model, "bogus_option")
 
@@ -75,16 +80,15 @@ def test_service_config_declares_every_model_option() -> None:
     assert declared == set(MODEL_OPTIONS)
 
 
-def test_service_config_defaults_reproduce_the_v2_models(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The config defaults, passed through as user_option_values, must build the
-    # same model as the v2 defaults did.
+def test_service_config_defaults_are_the_model_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The config defaults Chap shows, passed through as user_option_values, must
+    # build the same model as no options at all (the monthly v2 model).
     monkeypatch.delenv("AR_N_ITER", raising=False)
     options = AutoRegressiveConfig().model_dump(exclude={"prediction_periods", "additional_continuous_covariates"})
-    for period in ("week", "month"):
-        from_config, plain = build_model(period, options), build_model(period)
-        assert {key: getattr(from_config, key) for key in MODEL_OPTIONS} == {
-            key: getattr(plain, key) for key in MODEL_OPTIONS
-        }
+    from_config, plain = build_model(options), build_model()
+    assert {key: getattr(from_config, key) for key in MODEL_OPTIONS} == {
+        key: getattr(plain, key) for key in MODEL_OPTIONS
+    }
 
 
 def test_iso_weeks_start_on_their_monday_and_other_formats_are_unchanged() -> None:

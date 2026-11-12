@@ -1,14 +1,10 @@
 """Build the deep auto-regressive model for weekly or monthly data.
 
-One model serves both period types. The period type is read from the training
-data's ``time_period`` column, and it picks the defaults for the four knobs that
-depend on it (context, horizon, learning rate, epochs). Everything else shares
-one default. The values reproduce the two models this one replaces:
-
-- ``auto_regressive_weekly_v2``: 52-week context, 12-week horizon, Adam at 1e-5
-  for 1000 epochs.
-- ``auto_regressive_monthly_v2``: 36-month context, 3-month horizon, Adam at
-  1e-3 for 400 epochs (the library defaults).
+One model serves both period types, with one set of defaults: those of
+``auto_regressive_monthly_v2`` (36-period context, 3-period horizon, Adam at
+1e-3 for 400 epochs, the library defaults). Monthly runs reproduce that model
+unchanged. Weekly runs reproduce ``auto_regressive_weekly_v2`` when they set its
+four values, ``WEEKLY_V2_OPTIONS`` (as ``configs/weekly_example.yaml`` does).
 """
 
 import logging
@@ -23,17 +19,18 @@ logger = logging.getLogger(__name__)
 
 PeriodType = Literal["week", "month"]
 
-#: Knobs whose default depends on the period type. A run that sets one of them to
-#: ``AUTO`` (or leaves it out) gets the default for its data's period type.
-PERIOD_DEFAULTS: dict[PeriodType, dict[str, Any]] = {
-    "week": {"context_length": 52, "prediction_length": 12, "learning_rate": 1e-5, "n_iter": 1000},
-    "month": {"context_length": 36, "prediction_length": 3, "learning_rate": 1e-3, "n_iter": 400},
-}
+#: The defaults of the four knobs on which the two v2 models differed: the
+#: monthly v2 model's values, which are also the library's defaults.
+DEFAULTS: dict[str, Any] = {"context_length": 36, "prediction_length": 3, "learning_rate": 1e-3, "n_iter": 400}
 
-#: Sentinel for "use the period type's default". None of the period-dependent
-#: knobs has a meaningful zero, and a plain number keeps every option a flat
-#: scalar that chap and the Modeling App can render as a form control.
-AUTO = 0
+#: The weekly v2 model's values for those knobs. A weekly run that sets them
+#: reproduces auto_regressive_weekly_v2.
+WEEKLY_V2_OPTIONS: dict[str, Any] = {
+    "context_length": 52,
+    "prediction_length": 12,
+    "learning_rate": 1e-5,
+    "n_iter": 1000,
+}
 
 #: Model options a run may set via ``user_option_values``. The service config in
 #: service.py declares exactly these (tests/test_periods.py checks it).
@@ -90,41 +87,40 @@ def detect_period_type(time_periods: Iterable[Any]) -> PeriodType:
 
 
 def resolve_options(
-    period_type: PeriodType,
     options: Mapping[str, Any] | None = None,
     prediction_periods: int | None = None,
 ) -> dict[str, Any]:
-    """Return the run's model options with the period defaults filled in.
+    """Return the run's model options with the defaults filled in.
 
     Args:
-        period_type: ``"week"`` or ``"month"``.
-        options: A run's ``user_option_values``. A period-dependent knob that is
-            missing, ``None`` or ``AUTO`` takes the period default.
-        prediction_periods: The horizon the run asks for. When the horizon the
-            model is trained for is left on auto, it is raised to this if the
-            period default is shorter, so the forecast the run asks for can be
-            made at all (the trained horizon caps how far predict can reach).
+        options: A run's ``user_option_values``. A knob that is missing or
+            ``None`` takes its default.
+        prediction_periods: The horizon the run asks for. The trained horizon
+            caps how far predict can reach, so ``prediction_length`` is raised to
+            this when it is shorter. The v2 models rejected such runs instead.
     """
-    resolved = {key: value for key, value in (options or {}).items() if value is not None}
-    for key, default in PERIOD_DEFAULTS[period_type].items():
-        if resolved.get(key, AUTO) == AUTO:
-            resolved[key] = default
-            if key == "prediction_length" and prediction_periods and prediction_periods > default:
-                resolved[key] = prediction_periods
+    resolved = {**DEFAULTS, **{key: value for key, value in (options or {}).items() if value is not None}}
+    if prediction_periods and prediction_periods > resolved["prediction_length"]:
+        logger.info(
+            "prediction_length=%d is shorter than the %d periods asked for; raising it to %d",
+            resolved["prediction_length"],
+            prediction_periods,
+            prediction_periods,
+        )
+        resolved["prediction_length"] = prediction_periods
     return resolved
 
 
 def build_model(
-    period_type: PeriodType,
     options: Mapping[str, Any] | None = None,
     prediction_periods: int | None = None,
 ) -> AutoRegressiveModel:
-    """Return the model for a period type, applying any run ``user_option_values``.
+    """Return the model with the defaults and any run ``user_option_values`` applied.
 
     Unknown option keys are ignored with a warning. ``AR_N_ITER`` overrides the
     epoch count regardless of config, so the tests can run a fast pass.
     """
-    resolved = resolve_options(period_type, options, prediction_periods)
+    resolved = resolve_options(options, prediction_periods)
     if "AR_N_ITER" in os.environ:
         resolved["n_iter"] = int(os.environ["AR_N_ITER"])
     model = AutoRegressiveModel()

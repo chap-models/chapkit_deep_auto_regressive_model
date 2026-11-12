@@ -26,7 +26,7 @@ import pandas as pd
 import yaml
 
 # Run as a script (python tools/api_compare.py), so its own folder is on sys.path.
-from compare_v2 import DATA, HORIZON, _run
+from compare_v2 import BASE_OPTIONS, DATA, HORIZON, _run
 
 # (name, user options) per period type; options go to the service config and the reference config alike.
 CASES: dict[str, list[tuple[str, dict[str, Any]]]] = {
@@ -90,7 +90,8 @@ def main() -> None:
     )
     ok = True
     with httpx2.Client(base_url=args.url, timeout=120) as client:
-        for name, options in CASES[args.period]:
+        for name, case_options in CASES[args.period]:
+            options = {**BASE_OPTIONS[args.period], **case_options}
             service = _service_forecast(client, name, options, train, future)
             with tempfile.TemporaryDirectory() as tmp:
                 workdir = Path(tmp)

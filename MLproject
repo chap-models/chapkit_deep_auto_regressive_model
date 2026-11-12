@@ -28,27 +28,26 @@ meta_data:
 user_options:
   context_length:
     type: integer
-    minimum: 0
-    default: 0
-    description: 'Periods of history read as context. 0 uses the period default: 52 weeks or 36 months.'
+    exclusiveMinimum: 0
+    default: 36
+    description: Periods of history read as context. The weekly v2 model used 52.
   prediction_length:
     type: integer
-    minimum: 0
-    default: 0
-    description: Forecast horizon the model is trained for, which caps how far it can predict. 0 uses
-      the period default (12 weeks or 3 months), raised to the requested prediction_periods when that
-      is longer.
+    exclusiveMinimum: 0
+    default: 3
+    description: Forecast horizon the model is trained for, which caps how far it can predict. Raised
+      to the requested prediction_periods when that is longer. The weekly v2 model used 12.
   learning_rate:
     type: number
-    minimum: 0.0
-    default: 0.0
-    description: 'Adam learning rate (with a schedule, its start and end rate). 0 uses the period default:
-      1e-5 for weekly data, 1e-3 for monthly.'
+    exclusiveMinimum: 0.0
+    default: 0.001
+    description: Adam learning rate (with a schedule, its start and end rate). The weekly v2 model used
+      1e-5.
   n_iter:
     type: integer
-    minimum: 0
-    default: 0
-    description: 'Training epochs per ensemble member. 0 uses the period default: 1000 weekly, 400 monthly.'
+    exclusiveMinimum: 0
+    default: 400
+    description: Training epochs per ensemble member. The weekly v2 model used 1000.
   n_ensemble:
     type: integer
     default: 5
