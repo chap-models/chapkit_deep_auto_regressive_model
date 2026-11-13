@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The Docker workflow runs these checks before it publishes an image.
+  workflow_call:
 
 jobs:
   lint-and-test:
