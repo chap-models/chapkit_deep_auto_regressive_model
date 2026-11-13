@@ -111,14 +111,21 @@ def location_groups(data: pd.DataFrame) -> Iterator[tuple[Any, pd.DataFrame]]:
 
 
 def _check_consecutive(location: Any, periods: Sequence[Any]) -> None:
-    """Raise unless ``periods`` (sorted) are consecutive months or weeks, with no duplicates or gaps."""
+    """Raise unless ``periods`` (sorted) are consecutive months or weeks, with no duplicates or gaps.
+
+    A skipped ISO week 53 (week 52 followed by week 1) counts as consecutive.
+    """
     starts = [period_start_date(period) for period in periods]
     for i in range(1, len(starts)):
         before, after = starts[i - 1], starts[i]
         if re.fullmatch(r"\d{4}-\d{2}", str(periods[i - 1])):
             consecutive = (after.year * 12 + after.month) - (before.year * 12 + before.month) == 1
         else:
-            consecutive = (after - before).days == 7
+            # Some sources number every year 1-52 and skip ISO week 53.
+            days = (after - before).days
+            consecutive = days == 7 or (
+                days == 14 and before.isocalendar().week == 52 and after.isocalendar().week == 1
+            )
         if not consecutive:
             raise ValueError(
                 f"location {location!r}: time periods must be consecutive, with no duplicates or gaps, "

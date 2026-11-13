@@ -65,6 +65,12 @@ def test_get_series_accepts_consecutive_weeks_across_a_year_boundary() -> None:
     assert x.shape[1] == 4
 
 
+def test_get_series_accepts_a_skipped_iso_week_53() -> None:
+    # chapkit's test data, and some other sources, number every year 1-52.
+    x, _ = get_series(_frame(["2020-W51", "2020-W52", "2021-W01", "2021-W02"]))
+    assert x.shape[1] == 4
+
+
 def test_get_series_rejects_infinite_features_and_invalid_case_counts() -> None:
     data = _frame(_months(4))
     data.loc[0, "rainfall"] = np.inf
