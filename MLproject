@@ -49,6 +49,7 @@ user_options:
     description: Training epochs per ensemble member. For weekly data, 1000 is recommended.
   n_ensemble:
     type: integer
+    minimum: 1
     default: 5
     description: Deep-ensemble members (seed-varied; pooled at predict time).
   seed_offset:
@@ -65,10 +66,12 @@ user_options:
       to learning_rate over n_iter.
   peak_learning_rate:
     type: number
+    exclusiveMinimum: 0.0
     default: 0.001
     description: Peak learning rate of the warmup_cosine schedule.
   warmup_epochs:
     type: integer
+    minimum: 0
     default: 5
     description: Linear warmup epochs of the warmup_cosine schedule.
   early_stopping:
@@ -78,10 +81,12 @@ user_options:
       see validation_periods).
   validation_periods:
     type: integer
+    exclusiveMinimum: 0
     default: 12
     description: Trailing periods held out to pick the stopping epoch.
   min_probe_windows:
     type: integer
+    exclusiveMinimum: 0
     default: 5
     description: Training windows the early-stopping probe needs before the held-out block.
   refit_scaling:
@@ -93,10 +98,12 @@ user_options:
     description: How the probe's stopping point carries over to the full refit.
   patience:
     type: integer
+    exclusiveMinimum: 0
     default: 6
     description: Evaluations without improvement before stopping.
   eval_every:
     type: integer
+    exclusiveMinimum: 0
     default: 5
     description: Epochs between validation evaluations.
   cell:
@@ -108,14 +115,17 @@ user_options:
     description: Recurrent cell type.
   rnn_features:
     type: integer
+    exclusiveMinimum: 0
     default: 16
     description: Hidden width of the encoder/decoder cells.
   head_features:
     type: integer
+    exclusiveMinimum: 0
     default: 24
     description: Hidden width of the output head.
   rnn_layers:
     type: integer
+    exclusiveMinimum: 0
     default: 1
     description: Number of stacked encoder/decoder RNN layers.
   recursive_decode:
@@ -124,10 +134,14 @@ user_options:
     description: Feed each forecast step's predicted mean back as the next step's input.
   dropout_rate:
     type: number
+    exclusiveMaximum: 1.0
+    minimum: 0.0
     default: 0.2
     description: Dropout probability in the preprocess stage.
   input_dropout_rate:
     type: number
+    exclusiveMaximum: 1.0
+    minimum: 0.0
     default: 0.0
     description: Feature-dropout probability on the input covariates.
 entry_points:

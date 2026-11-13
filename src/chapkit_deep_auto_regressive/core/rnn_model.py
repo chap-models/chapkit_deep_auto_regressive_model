@@ -233,6 +233,8 @@ class ARModel2(nn.Module):
                 etas.append(eta_t)
                 mean = jax.nn.softplus(eta_t[..., 0]) * jnp.exp(eta_t[..., 1])  # NB mean
                 prev_val = jnp.log1p(jnp.maximum(mean, 0.0))[..., None]
+            if not etas:  # a one-period horizon: the context head already forecasts it
+                return ctx_eta
             return jnp.concatenate([ctx_eta, jnp.stack(etas, axis=-2)], axis=-2)
         if self.n_layers <= 1:
             states = _run_rnn(self.cell_pre, prev_x)

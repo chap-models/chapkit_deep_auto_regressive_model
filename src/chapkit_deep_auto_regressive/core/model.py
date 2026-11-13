@@ -518,7 +518,7 @@ class DeepAutoRegressiveModel:
         # refit follow the same schedule.
         learning_rate = self.learning_rate_for(len(data_set))
         params_list: list[Any] = []
-        for member in range(max(1, o.n_ensemble)):
+        for member in range(o.n_ensemble):
             seed = o.seed_offset + member
             max_steps = None
             if early_stopping_loaders is not None:
@@ -553,7 +553,13 @@ class DeepAutoRegressiveModel:
                 patience=o.patience,
                 max_steps=max_steps,
             )
-            params_list.append(trainer.train(data_loader, self._loss).params)
+            params = trainer.train(data_loader, self._loss).params
+            if not all(bool(jnp.all(jnp.isfinite(leaf))) for leaf in jax.tree_util.tree_leaves(params)):
+                raise RuntimeError(
+                    f"training diverged: ensemble member {member} ended with non-finite weights; "
+                    "check the input data for extreme values, or lower learning_rate"
+                )
+            params_list.append(params)
         self._predictor = FlaxPredictor(
             params_list,
             transform,
