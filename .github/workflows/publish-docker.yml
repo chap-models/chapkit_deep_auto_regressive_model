@@ -11,7 +11,15 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Publish only images whose commit passes lint, tests, the reference check and
+  # the contract tests (tag pushes do not trigger the CI workflow on their own).
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build-and-push:
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
