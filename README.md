@@ -22,7 +22,9 @@ model, so predict needs no configuration.
 The period type is not configured. Weekly (`start/end` date range or ISO week, `YYYYWww` /
 `YYYY-Www`) and monthly (`YYYY-MM`) data are both accepted and checked when training starts.
 Each location's periods are ordered by date, so ISO weeks (`2020W2`, `2020W10`, or both ISO forms
-mixed) stay in calendar order. One set of defaults serves both. For weekly data, four options have recommended values of their own:
+mixed) stay in calendar order, and must then be consecutive: a duplicate or a missing period is an
+error, and a `start/end` range must span exactly seven days. Covariates must be finite, and
+`disease_cases` must be finite and not negative (missing counts are allowed). One set of defaults serves both. For weekly data, four options have recommended values of their own:
 
 | option | default | recommended for weekly data |
 | --- | --- | --- |
@@ -40,16 +42,6 @@ with the defaults ask Chap for 12 weeks.
 
 Other defaults: GRU cells, a 5-member deep ensemble, dropout 0.2, a constant learning rate
 (`lr_schedule: warmup_cosine` warms up to a peak and decays), and early stopping off.
-
-## Known issues
-
-**One-period forecasts crash with recursive decoding.** With `recursive_decode: true`, a
-prediction for a single future period fails with `ValueError: Need at least one array to stack`
-(`core/rnn_model.py:226`). The decoder loop gets an empty sequence, so `jnp.stack(etas)` has
-nothing to stack. The service advertises one-period forecasts (`min_prediction_periods` 1), so
-this is reachable from Chap. Fixing it means handling the empty decoder sequence and adding a
-regression test. Until then, leave `recursive_decode` off (the default) or request two or more
-periods.
 
 ## Layout
 

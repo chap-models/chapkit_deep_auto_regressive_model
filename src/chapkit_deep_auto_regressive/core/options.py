@@ -48,7 +48,7 @@ class TrainingOptions(BaseModel):
     )
 
     # ---- Training ----
-    n_ensemble: int = Field(default=5, description="Deep-ensemble members (seed-varied; pooled at predict time).")
+    n_ensemble: int = Field(default=5, ge=1, description="Deep-ensemble members (seed-varied; pooled at predict time).")
     seed_offset: int = Field(default=0, description="Offset added to every ensemble member's seed (for repeat runs).")
     lr_schedule: LearningRateSchedule = Field(
         default="constant",
@@ -57,8 +57,10 @@ class TrainingOptions(BaseModel):
             "learning_rate over n_iter."
         ),
     )
-    peak_learning_rate: float = Field(default=0.001, description="Peak learning rate of the warmup_cosine schedule.")
-    warmup_epochs: int = Field(default=5, description="Linear warmup epochs of the warmup_cosine schedule.")
+    peak_learning_rate: float = Field(
+        default=0.001, gt=0.0, description="Peak learning rate of the warmup_cosine schedule."
+    )
+    warmup_epochs: int = Field(default=5, ge=0, description="Linear warmup epochs of the warmup_cosine schedule.")
 
     # ---- Early stopping (opt-in) ----
     early_stopping: bool = Field(
@@ -68,26 +70,30 @@ class TrainingOptions(BaseModel):
             "(needs a long series; see validation_periods)."
         ),
     )
-    validation_periods: int = Field(default=12, description="Trailing periods held out to pick the stopping epoch.")
+    validation_periods: int = Field(
+        default=12, gt=0, description="Trailing periods held out to pick the stopping epoch."
+    )
     min_probe_windows: int = Field(
-        default=5, description="Training windows the early-stopping probe needs before the held-out block."
+        default=5, gt=0, description="Training windows the early-stopping probe needs before the held-out block."
     )
     refit_scaling: RefitScaling = Field(
         default="epochs", description="How the probe's stopping point carries over to the full refit."
     )
-    patience: int = Field(default=6, description="Evaluations without improvement before stopping.")
-    eval_every: int = Field(default=5, description="Epochs between validation evaluations.")
+    patience: int = Field(default=6, gt=0, description="Evaluations without improvement before stopping.")
+    eval_every: int = Field(default=5, gt=0, description="Epochs between validation evaluations.")
 
     # ---- Architecture (persisted in the trained model) ----
     cell: CellType = Field(default="gru", description="Recurrent cell type.")
-    rnn_features: int = Field(default=16, description="Hidden width of the encoder/decoder cells.")
-    head_features: int = Field(default=24, description="Hidden width of the output head.")
-    rnn_layers: int = Field(default=1, description="Number of stacked encoder/decoder RNN layers.")
+    rnn_features: int = Field(default=16, gt=0, description="Hidden width of the encoder/decoder cells.")
+    head_features: int = Field(default=24, gt=0, description="Hidden width of the output head.")
+    rnn_layers: int = Field(default=1, gt=0, description="Number of stacked encoder/decoder RNN layers.")
     recursive_decode: bool = Field(
         default=False, description="Feed each forecast step's predicted mean back as the next step's input."
     )
-    dropout_rate: float = Field(default=0.2, description="Dropout probability in the preprocess stage.")
-    input_dropout_rate: float = Field(default=0.0, description="Feature-dropout probability on the input covariates.")
+    dropout_rate: float = Field(default=0.2, ge=0.0, lt=1.0, description="Dropout probability in the preprocess stage.")
+    input_dropout_rate: float = Field(
+        default=0.0, ge=0.0, lt=1.0, description="Feature-dropout probability on the input covariates."
+    )
 
 
 class Architecture(BaseModel):
@@ -112,9 +118,9 @@ class ModelOptions(TrainingOptions):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    preprocess_hidden: int = Field(default=16, description="Hidden width of the per-location preprocess stack.")
-    preprocess_output: int = Field(default=8, description="Output width of the preprocess stage.")
-    embedding_dim: int = Field(default=8, description="Size of the per-location embedding.")
+    preprocess_hidden: int = Field(default=16, gt=0, description="Hidden width of the per-location preprocess stack.")
+    preprocess_output: int = Field(default=8, gt=0, description="Output width of the preprocess stage.")
+    embedding_dim: int = Field(default=8, gt=0, description="Size of the per-location embedding.")
     additional_covariates: tuple[str, ...] = Field(
         default=(),
         description=(

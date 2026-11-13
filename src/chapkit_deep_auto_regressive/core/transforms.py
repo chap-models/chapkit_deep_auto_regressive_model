@@ -110,6 +110,22 @@ def location_groups(data: pd.DataFrame) -> Iterator[tuple[Any, pd.DataFrame]]:
         yield location, sub.iloc[order]
 
 
+def _check_consecutive(location: Any, periods: Sequence[Any]) -> None:
+    """Raise unless ``periods`` (sorted) are consecutive months or weeks, with no duplicates or gaps."""
+    starts = [period_start_date(period) for period in periods]
+    for i in range(1, len(starts)):
+        before, after = starts[i - 1], starts[i]
+        if re.fullmatch(r"\d{4}-\d{2}", str(periods[i - 1])):
+            consecutive = (after.year * 12 + after.month) - (before.year * 12 + before.month) == 1
+        else:
+            consecutive = (after - before).days == 7
+        if not consecutive:
+            raise ValueError(
+                f"location {location!r}: time periods must be consecutive, with no duplicates or gaps, "
+                f"but {periods[i - 1]!r} is followed by {periods[i]!r}"
+            )
+
+
 def get_series(data: pd.DataFrame, covariates: Sequence[str] = REQUIRED_COVARIATES) -> tuple[Array, Array]:
     """Extract dense feature and target arrays from the input frame.
 
@@ -133,9 +149,11 @@ def get_series(data: pd.DataFrame, covariates: Sequence[str] = REQUIRED_COVARIAT
         ``disease_cases`` column (i.e. future data).
 
     Raises:
-        ValueError: If a requested covariate column is missing, if the locations
+        ValueError: If a requested covariate column is missing, if a location's
+            periods are not consecutive (duplicates or gaps), if the locations
             do not all share the same number of periods (the dense array is
-            rectangular by construction), or if any feature value is NaN.
+            rectangular by construction), if any feature value is NaN or
+            infinite, or if ``disease_cases`` is negative or infinite.
     """
     has_target = "disease_cases" in data.columns
     missing = [c for c in covariates if c not in data.columns]
@@ -146,6 +164,7 @@ def get_series(data: pd.DataFrame, covariates: Sequence[str] = REQUIRED_COVARIAT
     counts: dict[Any, int] = {}
     for location, sub in location_groups(data):
         counts[location] = len(sub)
+        _check_consecutive(location, sub["time_period"].tolist())
         yp = np.asarray([year_position_from_period(period) for period in sub["time_period"]])
         features: list[Array] = [sub[name].to_numpy() for name in covariates]
         # Seasonal calendar features: the year-position ramp plus the first two
@@ -158,12 +177,16 @@ def get_series(data: pd.DataFrame, covariates: Sequence[str] = REQUIRED_COVARIAT
         features.append(np.cos(4 * np.pi * yp))
         xs.append(np.array(features).T)
         if has_target:
-            ys.append(sub["disease_cases"].to_numpy())
+            cases = sub["disease_cases"].to_numpy()
+            numeric = cases.astype(float)
+            if np.any(numeric < 0) or np.any(np.isinf(numeric)):
+                raise ValueError(f"location {location!r}: disease_cases must be finite and not negative")
+            ys.append(cases)
     if len(set(counts.values())) > 1:
         raise ValueError(f"every location must have the same number of periods, but the period counts differ: {counts}")
     x = np.array(xs)
-    if np.any(np.isnan(x)):
-        raise ValueError(f"input features contain NaN values (one of {tuple(covariates)})")
+    if not np.all(np.isfinite(x)):
+        raise ValueError(f"input features contain NaN or infinite values (one of {tuple(covariates)})")
     return x, np.array(ys)
 
 
@@ -180,7 +203,11 @@ def period_start_date(period: str) -> datetime:
     """
     text = str(period)
     if "/" in text:
-        return datetime.fromisoformat(text.split("/")[0])
+        start_text, end_text = text.split("/", 1)
+        start, end = datetime.fromisoformat(start_text), datetime.fromisoformat(end_text)
+        if (end - start).days != 6:
+            raise ValueError(f"time_period {text!r} is not a week: a start/end range must span 7 days")
+        return start
     # ISO weeks, the week format chapkit sends.
     iso_week = re.fullmatch(r"(\d{4})-?W(\d{1,2})", text)
     if iso_week:

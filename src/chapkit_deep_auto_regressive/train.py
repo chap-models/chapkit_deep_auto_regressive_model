@@ -34,9 +34,16 @@ class RunConfig(BaseModel):
 
 
 def _read_config(config_path: str | None) -> RunConfig:
-    """Read and validate a Chap model-configuration YAML, if given."""
-    if not config_path or not Path(config_path).exists():
+    """Read and validate a Chap model-configuration YAML, if given.
+
+    Raises:
+        FileNotFoundError: If a path is given but does not exist, so a mistyped
+            path does not silently train with the defaults.
+    """
+    if not config_path:
         return RunConfig()
+    if not Path(config_path).exists():
+        raise FileNotFoundError(f"model configuration {config_path!r} does not exist")
     with open(config_path) as f:
         return RunConfig.model_validate(yaml.safe_load(f) or {})
 
