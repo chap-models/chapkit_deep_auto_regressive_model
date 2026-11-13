@@ -11,9 +11,10 @@ Usage:
 By default every case runs with ``AR_N_ITER=30`` to keep it fast (the code path
 is the same at any epoch count); ``--full`` drops the override so the defaults
 (1000 epochs weekly, 400 monthly) are compared as shipped. Exits 1 on any mismatch,
-except that the cases in ``SHIFT_TOLERANCE`` may differ, in short runs on the
-platforms where they are known to, within a bound on how far each forecast's
-mean and its 10th and 90th percentiles move.
+except that every case may differ by rounding (samples at most one case apart,
+no forecast moving by more than 1%), and the cases in ``SHIFT_TOLERANCE`` may
+differ, in short runs on the platforms where they are known to, within a bound
+on how far each forecast's mean and its 10th and 90th percentiles move.
 """
 
 import argparse
@@ -87,6 +88,14 @@ SHIFT_TOLERANCE: dict[tuple[str, str], tuple[float, float]] = {
     ("week", "warmup-cosine-early-stopping"): (0.15, 0.30),
 }
 
+#: Every case, on any platform and at any length, also passes when its samples
+#: differ by at most this many cases and no forecast's mean or 10th or 90th
+#: percentile moves by more than ``ROUNDING_SHIFT``. GitHub's x86_64 runners have
+#: different processors, and on some of them a sampled count rounds to the
+#: neighbouring integer.
+ROUNDING_DIFF = 1.0
+ROUNDING_SHIFT = 0.01
+
 
 def _tolerance_applies(full: bool) -> bool:
     """Whether ``SHIFT_TOLERANCE`` applies here: short runs, not on Linux arm64."""
@@ -150,7 +159,8 @@ def _run(repo: Path, workdir: Path, env: dict[str, str], tag: str) -> pd.DataFra
 def compare(period: str, reference: Path, full: bool, only: list[str] | None) -> bool:
     """Run every case for one period type; return whether every case passed.
 
-    A case passes when its forecasts are identical, or when it is in
+    A case passes when its forecasts are identical, when they differ only by
+    rounding (``ROUNDING_DIFF``, ``ROUNDING_SHIFT``), or when it is in
     ``SHIFT_TOLERANCE``, the tolerance applies here, and the forecasts move
     within its bounds.
     """
@@ -209,7 +219,10 @@ def compare(period: str, reference: Path, full: bool, only: list[str] | None) ->
                 + ")"
             )
             tolerance = SHIFT_TOLERANCE.get((period, name))
-            if tolerance is not None and _tolerance_applies(full):
+            if max_diff <= ROUNDING_DIFF and max_shift <= ROUNDING_SHIFT:
+                passed = True
+                status = "ROUNDING"
+            elif tolerance is not None and _tolerance_applies(full):
                 passed = median_shift <= tolerance[0] and max_shift <= tolerance[1]
                 status = "WITHIN TOLERANCE" if passed else "OUTSIDE TOLERANCE"
                 detail += f" (allowed: median {tolerance[0]:.0%}, max {tolerance[1]:.0%})"
